@@ -852,7 +852,7 @@ function showSection(s, updateHash=true){
 }
 
 // SETTINGS - FIX: load from DB and save properly
-function initSettings(){
+async function initSettings(){
   if(!CP)return;
   const nameParts=CP.name.split(' ');
   document.getElementById('set-fname').value=nameParts[0]||'';
@@ -881,8 +881,7 @@ function initSettings(){
   const loginField=document.getElementById('set-login');
   if(loginField)loginField.value='';
   // Load hide_online
-  updateHideOnlineUI();
-  renderVerifyStatus();
+  await renderVerifyStatus();
   loadMyTickets();
 }
 
