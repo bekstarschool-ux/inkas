@@ -1105,7 +1105,8 @@ async function openUserProfile(id, updateHash=true){
   viewingUser=p;
   if(updateHash&&p.login){window.location.hash='/user/'+p.login;}
   document.getElementById('up-av').className='av lg '+p.cls;
-  document.getElementById('up-av').innerHTML=p.initials+vb(p.verified,p.staff_verified)+(isOnline(p.last_seen)?'<div class="online-dot"></div>':'');
+  const _hideOnline=p.hide_online&&p.role&&p.role!=='user';
+  document.getElementById('up-av').innerHTML=p.initials+vb(p.verified,p.staff_verified)+(!_hideOnline&&isOnline(p.last_seen)?'<div class="online-dot"></div>':'');
   document.getElementById('up-name').innerHTML=esc(p.name)+vi(p.verified,p.staff_verified);
   document.getElementById('up-login').textContent='@'+p.login;
   document.getElementById('up-bio').textContent=p.bio||'';
@@ -1119,7 +1120,12 @@ async function openUserProfile(id, updateHash=true){
     upExtra.style.display=extra?'flex':'none';
   }
   const onlineEl=document.getElementById('up-online');
-  if(onlineEl)onlineEl.innerHTML=isOnline(p.last_seen)?'<span style="color:#1D9E75;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-filled" style="font-size:10px"></i>В сети</span>':'<span style="color:var(--tx2)">Был(а) '+ago(p.last_seen)+'</span>';
+  if(onlineEl){
+    const hideOnline=p.hide_online&&p.role&&p.role!=='user';
+    if(hideOnline) onlineEl.innerHTML='<span style="color:var(--tx2)">Администратор</span>';
+    else if(isOnline(p.last_seen)) onlineEl.innerHTML='<span style="color:#1D9E75;display:flex;align-items:center;gap:4px"><i class="ti ti-circle-filled" style="font-size:10px"></i>В сети</span>';
+    else onlineEl.innerHTML='<span style="color:var(--tx2)">Был(а) '+ago(p.last_seen)+'</span>';
+  }
   const uc=document.getElementById('up-cover');if(uc)uc.style.background=p.cover_color||'#185FA5';
   showSection('user-profile');
   // FIX: Show blocked banner
