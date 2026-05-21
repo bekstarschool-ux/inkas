@@ -413,9 +413,7 @@
               <label style="position:relative;display:inline-block;width:40px;height:22px"><input type="checkbox" id="hide-online-toggle" onchange="toggleHideOnline(this)" style="opacity:0;width:0;height:0"><span style="position:absolute;cursor:pointer;inset:0;background:var(--br2);border-radius:11px;transition:.3s" id="hide-online-slider"></span></label>
             </div>
           </div></div>
-          <div class="ss"><div class="ssh">Логин</div><div style="padding:16px">
-            <div class="fl"><label>Изменить логин (@)</label><input id="set-login" placeholder="new_login"><div class="fh">Только латиница, цифры и _ · Можно менять раз в 30 дней</div></div>
-          </div></div>
+                    </div></div>
           <div class="ss" id="verify-request-section"><div class="ssh">Верификация</div><div style="padding:16px"><div id="verify-status-block"></div></div></div>
           <div class="ss"><div class="ssh">Обращение в поддержку</div><div style="padding:16px">
             <div style="font-size:13px;color:var(--tx2);margin-bottom:10px;line-height:1.6">Если у вас возникли вопросы или проблемы — напишите нам.</div>
@@ -486,8 +484,8 @@
     <div class="mni on" onclick="showSection('feed')"><i class="ti ti-home"></i><span>Лента</span></div>
     <div class="mni" onclick="showSection('friends')"><i class="ti ti-users"></i><span>Друзья</span><div class="mbadge" id="mob-freq" style="display:none"></div></div>
     <div class="mni" onclick="showSection('messages')"><i class="ti ti-message"></i><span>Чаты</span><div class="mbadge" id="mob-unread" style="display:none"></div></div>
-    <div class="mni" onclick="showSection('notifications')"><i class="ti ti-bell"></i><span>Уведомления</span><div class="mbadge" id="mob-notif" style="display:none"></div></div>
     <div class="mni" onclick="showSection('profile')"><i class="ti ti-user"></i><span>Профиль</span></div>
+    <div class="mni" onclick="showSection('settings')"><i class="ti ti-settings"></i><span>Ещё</span></div>
   </div>
 </div>
 
@@ -835,7 +833,7 @@ function showSection(s, updateHash=true){
   const items=document.querySelectorAll('.ni');
   if(map[s]!==undefined&&items[map[s]])items[map[s]].classList.add('on');
   document.querySelectorAll('.mni').forEach(n=>n.classList.remove('on'));
-  const mm={feed:0,friends:1,messages:2,notifications:3,profile:4};
+  const mm={feed:0,friends:1,messages:2,profile:3,settings:4};
   const mi=document.querySelectorAll('.mni');
   if(mm[s]!==undefined&&mi[mm[s]])mi[mm[s]].classList.add('on');
   if(s==='admin')renderAdmin();
@@ -2262,6 +2260,22 @@ function handleChatKey(e){
     sendMsg();
   }
 }
+
+async function toggleHideOnline(checkbox){
+  if(!checkbox)return;
+  const val=checkbox.checked;
+  const slider=document.getElementById('hide-online-slider');
+  if(slider)slider.style.background=val?'var(--ac)':'var(--br2)';
+  const{error}=await sb.from('profiles').update({hide_online:val}).eq('id',CU.id);
+  if(error){
+    toast('Ошибка сохранения','r');
+    checkbox.checked=!val;
+    return;
+  }
+  CP=await loadP(CU.id);
+  toast(val?'Онлайн скрыт':'Онлайн снова виден','g');
+}
+
 
 init();
 </script>
