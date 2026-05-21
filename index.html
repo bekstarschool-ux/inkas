@@ -153,7 +153,7 @@
     .priv-row:last-child{border:none}
     /* SECTIONS */
     .sec{display:none;flex-direction:column}
-    .sec.on{display:flex}
+    .sec.on{display:flex;flex-direction:column;width:100%}
     .cpick{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
     .copt{width:32px;height:32px;border-radius:50%;cursor:pointer;border:3px solid transparent}
     .copt.on{border-color:var(--tx)}
@@ -195,6 +195,7 @@
       .ac2{padding:20px 16px;width:calc(100% - 24px);max-width:360px;margin:0 auto}
       .msg{max-width:88%}
       .post,.pbox,.card{border-radius:var(--rm)}
+    #section-settings{flex-direction:column!important;width:100%!important}
       /* Messages on mobile - stack vertically */
       #section-messages>div{flex-direction:column!important;min-height:calc(100vh - 130px)!important}
       #section-messages>div>div:first-child{width:100%!important;max-height:220px;border-right:none!important;border-bottom:.5px solid var(--br)}
@@ -389,7 +390,7 @@
         </div>
 
         <!-- НАСТРОЙКИ -->
-        <div class="sec" id="section-settings" style="gap:0">
+        <div class="sec" id="section-settings" style="gap:0;flex-direction:column">
           <div style="font-size:15px;font-weight:600;margin-bottom:12px">Настройки профиля</div>
           <div class="ss"><div class="ssh">Личные данные</div><div style="padding:16px">
             <div class="fl"><label>Имя</label><input id="set-fname" placeholder="Иван"></div>
