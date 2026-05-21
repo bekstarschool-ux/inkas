@@ -1896,10 +1896,10 @@ async function loadCommunities(){
   if(!data||!data.length){ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)">Сообществ нет. Создайте первое!</div>';return;}
   ct.innerHTML=data.map(c=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:8px" onclick="openCommunityPage('${c.id}')"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:4px">${esc(c.name)} ${c.verified&&c.verified!=='none'?`<i class="ti ti-rosette-discount-check" style="font-size:12px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i>`:''}</div><div style="font-size:11px;color:var(--tx2)">${esc(c.description||'')}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${c.members_count||0} участников</div></div><i class="ti ti-chevron-right" style="color:var(--tx2);flex-shrink:0"></i></div>`).join('');
 }
-async function openCommunityPage(id){
+async function openCommunityPage(id, updateHash=true){
   closeSearch();document.getElementById('srch').value='';
   const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)return;
-  if(updateHash!==false){window.location.hash='/community/'+(c.custom_id||id);}
+  if(updateHash){window.location.hash='/community/'+(c.custom_id||id);}
   currentCommunity=c;currentCpTab='posts';
   const cpav=document.getElementById('cp-av');cpav.className='av lg '+c.avatar_color;cpav.textContent=c.avatar_initials;
   document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i><span class="vtip">${c.verified==='gold'?'Публичная персона':'Верифицировано'}</span></span>`:'');
