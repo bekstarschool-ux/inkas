@@ -2024,7 +2024,7 @@ function renderStaff(body){
 async function renderCommAdmin(body){
   const{data:comms}=await sb.from('communities').select('*').order('created_at',{ascending:false});const P=PERMS[CP.role]||{};
   if(!comms||!comms.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Сообществ нет</div>';return;}
-  body.innerHTML=comms.map(c=>{let acts='';if(P.verifyUsers){if(!c.verified||c.verified==='none')acts=`<button class="ba bl2" onclick="verifyCom('${c.id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="verifyCom('${c.id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button>`;else acts=`<button class="ba gh" onclick="revokeCom('${c.id}')"><i class="ti ti-x"></i>Отозвать</button>`;}return `<div class="ar"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.members_count||0} участников</div></div><div class="aac">${acts}</div></div>`;}).join('');
+  body.innerHTML=comms.map(c=>{let acts='';if(P.verifyUsers){if(!c.verified||c.verified==='none')acts=`<button class="ba bl2" onclick="verifyCom('${c.id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="verifyCom('${c.id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button>`;else acts=`<button class="ba gh" onclick="revokeCom('${c.id}')"><i class="ti ti-x"></i>Отозвать</button>`;}if(P.manageStaff)acts+=`<button class="ba da" onclick="adminDeleteCommunity('${c.id}','${ea(c.name)}')"><i class="ti ti-trash"></i></button>`;return `<div class="ar"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.members_count||0} участников</div></div><div class="aac">${acts}</div></div>`;}).join('');
 }
 function swTab(t,el){CT=t;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));el.classList.add('on');renderAdmin();}
 function closeMod(id){document.getElementById(id).classList.remove('on');}
@@ -2381,6 +2381,14 @@ async function rejectCommunityVerify(reqId){
   await sb.from('community_verify_requests').update({status:'rejected'}).eq('id',reqId);
   renderAdmin();
   toast('Заявка отклонена','r');
+}
+
+
+async function adminDeleteCommunity(id, name){
+  if(!confirm('Удалить сообщество «'+name+'»? Это действие необратимо.'))return;
+  await sb.from('communities').delete().eq('id',id);
+  renderAdmin();
+  toast('Сообщество удалено','r');
 }
 
 
