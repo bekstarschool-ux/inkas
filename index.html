@@ -173,7 +173,7 @@
     .toast{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:var(--rm);font-size:13px;font-weight:500;z-index:300;white-space:nowrap}
     .toast.g{background:#27500A;color:#C0DD97}.toast.r{background:#791F1F;color:#FCEBEB}.toast.b{background:#0C447C;color:#B5D4F4}.toast.v{background:#6B21A8;color:#E9D5FF}.toast.on{display:block}
     /* MOBILE */
-    .mnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:.5px solid var(--br);z-index:50;padding:6px 0 max(6px,env(safe-area-inset-bottom))}
+    .mnav{display:none!important;position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:.5px solid var(--br);z-index:50;padding:6px 0 max(6px,env(safe-area-inset-bottom))}
     .mnav-inner{display:flex;justify-content:space-around}
     .mni{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;cursor:pointer;color:var(--tx2);font-size:10px;min-width:48px;position:relative}
     .mni.on{color:var(--ac)}.mni i{font-size:22px}
@@ -186,7 +186,7 @@
     @media(max-width:900px){.sr{display:none}}
     @media(max-width:680px){
       .sb{display:none}
-      .mnav{display:block}
+      .mnav{display:block!important}
       .app{flex-direction:column}
       .mn{width:100%}
       .ct{padding:8px;padding-bottom:72px;gap:8px;flex-direction:column}
@@ -676,9 +676,6 @@ async function showApp(){
   updateUI();
   document.getElementById('admin-nav-item').style.display=CP.role!=='user'?'flex':'none';
   document.getElementById('self-verify-btn').style.display=CP.role==='super'?'flex':'none';
-  // Show mobile nav
-  const mobNav=document.getElementById('mob-nav');
-  if(mobNav)mobNav.style.display='block';
   // FIX: restore last route on reload
   await handleRoute();
   loadPosts();
@@ -774,7 +771,7 @@ async function doLogout(){
   if(chatChannel){sb.removeChannel(chatChannel);chatChannel=null;}
   if(notifChannel){sb.removeChannel(notifChannel);notifChannel=null;}
   await sb.auth.signOut();CU=null;CP=null;
-  const mn=document.getElementById('mob-nav');if(mn)mn.style.display='none';
+
   document.getElementById('screen-main').classList.remove('on');
   document.getElementById('screen-auth').classList.add('on');
   document.getElementById('l-login').value='';document.getElementById('l-pass').value='';
@@ -1524,7 +1521,7 @@ function renderChatWindow(name,cls,initials,verified,sv,isGroup=false,gcId=null)
     <div class="cir">
       <div class="spick" id="spick">${STICKERS.map(s=>`<div class="stk2" onclick="sendSticker('${s}')">${s}</div>`).join('')}</div>
       <button class="bsm" onclick="toggleSpick()" style="padding:7px 10px;flex-shrink:0"><i class="ti ti-mood-happy" style="font-size:16px"></i></button>
-      <textarea class="cinp" id="chat-inp" placeholder="Написать... (Shift+Enter — новая строка)" rows="1" onkeydown="handleChatKey(event)" oninput="autoResizeChatInp(this)" style="resize:none;overflow-y:hidden;line-height:1.4;max-height:120px;padding:9px 14px"></textarea>
+      <textarea class="cinp" id="chat-inp" placeholder="Написать... (Shift+Enter — новая строка, Enter — отправить)" rows="1" onkeydown="handleChatKey(event)" oninput="autoResizeChatInp(this)" style="resize:none;overflow-y:hidden;line-height:1.4;max-height:120px;padding:9px 14px"></textarea>
       <button class="bsnd" onclick="sendMsg()"><i class="ti ti-send" style="font-size:15px"></i></button>
     </div>
     <div class="select-toolbar" id="select-toolbar">
@@ -2257,6 +2254,14 @@ async function closeTicket(id){
   renderAdmin();toast('Закрыто','g');
 }
 
+
+function handleChatKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){
+    e.preventDefault();
+    e.stopPropagation();
+    sendMsg();
+  }
+}
 
 init();
 </script>
