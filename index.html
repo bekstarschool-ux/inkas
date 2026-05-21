@@ -1898,8 +1898,8 @@ async function loadCommunities(){
 }
 async function openCommunityPage(id){
   closeSearch();document.getElementById('srch').value='';
-  const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)retur
-  if(updateHash!==false){window.location.hash='/community/'+(c.custom_id||id);}n;
+  const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)return;
+  if(updateHash!==false){window.location.hash='/community/'+(c.custom_id||id);}
   currentCommunity=c;currentCpTab='posts';
   const cpav=document.getElementById('cp-av');cpav.className='av lg '+c.avatar_color;cpav.textContent=c.avatar_initials;
   document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i><span class="vtip">${c.verified==='gold'?'Публичная персона':'Верифицировано'}</span></span>`:'');
@@ -1917,6 +1917,15 @@ async function openCommunityPage(id){
 }
 function cpTab(tab,el){currentCpTab=tab;document.querySelectorAll('#section-community-page .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');if(tab==='posts')loadCommunityPosts();else if(tab==='topics')loadCommunityTopics();else if(tab==='members')loadCommunityMembers();}
 async function checkMembership(){if(!currentCommunity||!CU)return false;const{data}=await sb.from('community_members').select('id').eq('community_id',currentCommunity.id).eq('user_id',CU.id).single();return!!data;}
+async function getCommunityRole(){
+  if(!currentCommunity||!CU)return null;
+  if(currentCommunity.owner_id===CU.id)return 'owner';
+  if(CP.role==='super'||CP.role==='admin')return 'owner';
+  const{data}=await sb.from('community_members').select('role,permissions').eq('community_id',currentCommunity.id).eq('user_id',CU.id).single();
+  if(!data)return null;
+  return data.permissions||data.role||'member';
+}
+
 async function loadCommunityPosts(){
   if(!currentCommunity)return;
   const ct=document.getElementById('cp-content');
