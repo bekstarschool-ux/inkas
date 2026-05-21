@@ -1706,8 +1706,26 @@ async function loadMessages(partnerId,isSaved=false){
   const ct=document.getElementById('chat-msgs');if(!ct)return;
   ct.innerHTML='<div style="text-align:center;padding:20px"><div class="sp2" style="margin:0 auto"></div></div>';
   let query;
-  if(isSaved){query=sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',CU.id);}
-  else{query=sb.from('messages').select('*').or(`and(sender_id.eq.${CU.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${CU.id})`).neq('sender_id',CU.id+'_saved');}
+  if(isSaved){
+    query=sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',CU.id);
+  } else {
+    query=sb.from('messages').select('*').or(`sender_id.eq.${CU.id},receiver_id.eq.${CU.id}`).order('created_at',{ascending:true}).limit(100);
+    const{data:allMsgs}=await query;
+    // Filter to only messages between these two users
+    const msgs=(allMsgs||[]).filter(m=>
+      (m.sender_id===CU.id&&m.receiver_id===partnerId)||
+      (m.sender_id===partnerId&&m.receiver_id===CU.id)
+    );
+    if(!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">Начните диалог!</div>';return;}
+    ct.innerHTML='';
+    for(const m of msgs){
+      const isOut=m.sender_id===CU.id;
+      const deleted=(isOut&&m.deleted_by_sender)||(!isOut&&m.deleted_by_receiver);
+      if(!deleted)appendMsg(m,false);
+    }
+    ct.scrollTop=ct.scrollHeight;
+    return;
+  }
   const{data:msgs}=await query.order('created_at',{ascending:true}).limit(50);
   if(!msgs||!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">'+(isSaved?'Нет сохранённых сообщений':'Начните диалог!')+'</div>';return;}
   ct.innerHTML='';
