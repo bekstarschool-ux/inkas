@@ -496,7 +496,8 @@
 <div class="mov" id="pwd-modal"><div class="md"><div class="mtt" id="pm-t">Сброс пароля</div><div class="ib g"><i class="ti ti-lock"></i> Пароли зашифрованы — только сброс.</div><div class="mss" id="pm-s"></div><div class="mac"><button class="bsm" onclick="closeMod('pwd-modal')">Отмена</button><button class="ba tl" onclick="confirmReset()"><i class="ti ti-refresh"></i>Сбросить</button></div></div></div>
 <div class="mov" id="report-modal"><div class="md"><div class="mtt" id="rep-mt"></div><div class="mss" id="rep-ms"></div><div class="mac"><button class="bsm" onclick="closeMod('report-modal')">Закрыть</button><button class="ba da" onclick="reportBlock()"><i class="ti ti-ban"></i>Заблокировать</button><button class="ba su" onclick="resolveReport()"><i class="ti ti-check"></i>Закрыть жалобу</button></div></div></div>
 <div class="mov" id="create-community-modal"><div class="md"><div class="mtt">Создать сообщество</div><div class="fl"><label>Название</label><input type="text" id="cm-name" placeholder="Название"></div><div class="fl"><label>ID сообщества</label><input type="text" id="cm-id" placeholder="my_community"><div class="fh">Только латиница, цифры и _ · Используется в ссылке</div></div><div class="fl"><label>Описание</label><textarea id="cm-desc" placeholder="О чём сообщество?"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cm-color-pick"></div></div><div class="mac"><button class="bsm" onclick="closeMod('create-community-modal')">Отмена</button><button class="ba bl2" onclick="createCommunity()"><i class="ti ti-plus"></i>Создать</button></div></div></div>
-<div class="mov" id="community-settings-modal"><div class="md"><div class="mtt">Настройки сообщества</div><div class="fl"><label>Название</label><input type="text" id="cs-name"></div><div class="fl"><label>ID сообщества</label><input type="text" id="cs-id" placeholder="my_community"><div class="fh">Только латиница, цифры и _ · Используется в ссылке</div></div><div class="fl"><label>Описание</label><textarea id="cs-desc"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cs-color-pick"></div></div><div class="mac"><button class="bdanger" onclick="deleteCommunity()" style="margin-right:auto"><i class="ti ti-trash"></i>Удалить</button><button class="bsm" onclick="closeMod('community-settings-modal')">Отмена</button><button class="ba bl2" onclick="saveCommunitySettings()"><i class="ti ti-check"></i>Сохранить</button></div></div></div>
+<div class="mov" id="community-settings-modal"><div class="md"><div class="mtt">Настройки сообщества</div><div class="fl"><label>Название</label><input type="text" id="cs-name"></div><div class="fl"><label>ID сообщества</label><input type="text" id="cs-id" placeholder="my_community"><div class="fh">Только латиница, цифры и _ · Используется в ссылке</div></div><div class="fl"><label>Описание</label><textarea id="cs-desc"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cs-color-pick"></div></div><div id="community-verify-status" style="margin-bottom:12px"></div>
+  <div class="mac"><button class="bdanger" onclick="deleteCommunity()" style="margin-right:auto"><i class="ti ti-trash"></i>Удалить</button><button class="bsm" onclick="closeMod('community-settings-modal')">Отмена</button><button class="ba bl2" onclick="saveCommunitySettings()"><i class="ti ti-check"></i>Сохранить</button></div></div></div>
 <div class="mov" id="group-chat-modal"><div class="md"><div class="mtt">Новый групповой чат</div><div class="fl"><label>Название группы</label><input type="text" id="gc-name" placeholder="Название"></div><div class="mss">Выберите участников из друзей:</div><div id="gc-friends-list" style="max-height:200px;overflow-y:auto;margin-bottom:12px;border:.5px solid var(--br);border-radius:var(--rm)"></div><div class="mac"><button class="bsm" onclick="closeMod('group-chat-modal')">Отмена</button><button class="ba pu" onclick="createGroupChat()"><i class="ti ti-users-plus"></i>Создать</button></div></div></div>
 <div class="mov" id="self-verify-modal"><div class="md"><div class="mtt">Верифицировать себя</div><div class="ib v"><i class="ti ti-rosette-discount-check"></i> Как супер-администратор вы можете выдать себе любую галочку.</div><select id="sv-type"><option value="blue">🔵 Синяя</option><option value="gold">🟡 Золотая</option><option value="violet">🟣 Фиолетовая — команда Инкас</option><option value="none">Убрать галочку</option></select><div class="mac"><button class="bsm" onclick="closeMod('self-verify-modal')">Отмена</button><button class="ba bl2" onclick="confirmSelfVerify()"><i class="ti ti-check"></i>Применить</button></div></div></div>
 <div class="mov" id="new-topic-modal"><div class="md"><div class="mtt">Новое обсуждение</div><div class="fl"><label>Тема</label><input type="text" id="topic-title" placeholder="Название темы"></div><div class="fl"><label>Описание</label><textarea id="topic-content" placeholder="Опишите тему..."></textarea></div><div class="mac"><button class="bsm" onclick="closeMod('new-topic-modal')">Отмена</button><button class="ba bl2" onclick="createTopic()"><i class="ti ti-plus"></i>Создать</button></div></div></div>
@@ -520,6 +521,18 @@
 .forward-item:hover{background:var(--bg2)}
 .forward-item.selected{background:var(--acl)}
 </style>
+<div class="mov" id="community-verify-modal"><div class="md">
+  <div class="mtt">Заявка на верификацию сообщества</div>
+  <div class="mss">Администрация рассмотрит заявку и выдаст галочку вашему сообществу.</div>
+  <div class="fl"><label>Тип галочки</label>
+    <select id="cvr-type" style="width:100%;padding:8px;border:.5px solid var(--br2);border-radius:var(--rm);background:var(--bg2);color:var(--tx);font-size:13px">
+      <option value="blue">🔵 Синяя — верифицированное сообщество</option>
+      <option value="gold">🟡 Золотая — публичное сообщество</option>
+    </select>
+  </div>
+  <div class="fl"><label>Причина</label><textarea id="cvr-reason" placeholder="Почему ваше сообщество заслуживает верификации?" style="height:100px"></textarea></div>
+  <div class="mac"><button class="bsm" onclick="closeMod('community-verify-modal')">Отмена</button><button class="ba bl2" onclick="submitCommunityVerifyRequest()"><i class="ti ti-send"></i>Отправить</button></div>
+</div></div>
 <div class="mov" id="support-ticket-modal"><div class="md">
   <div class="mtt">Обращение в поддержку</div>
   <div class="mss">Мы ответим в ближайшее время.</div>
@@ -1922,7 +1935,8 @@ async function createCommunity(){
   await sb.from('community_members').insert({community_id:data.id,user_id:CU.id,role:'owner'});
   closeMod('create-community-modal');toast('Сообщество создано!','g');loadCommunities();
 }
-function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-id').value=currentCommunity.custom_id||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
+function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-id').value=currentCommunity.custom_id||'';document.getElementById('cs-desc').value=currentCommunity.description||'';
+  loadCommunityVerifyStatus();selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
 async function saveCommunitySettings(){
   if(!currentCommunity)return;
   const name=document.getElementById('cs-name').value.trim();
@@ -1991,7 +2005,10 @@ async function renderVerifyRequests(body){
   const{data:reqs}=await sb.from('verify_requests').select('*,profiles(name,login,initials,cls)').eq('status','pending').order('created_at');
   const cnt=reqs?reqs.length:0;document.getElementById('vreq-cnt').textContent=cnt||'';
   if(!reqs||!reqs.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Заявок нет</div>';return;}
-  body.innerHTML=reqs.map(r=>{const p=r.profiles;return `<div class="ar rpt"><div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${p?esc(p.name):'?'} <span style="font-size:11px;color:var(--tx2)">@${p?p.login:''}</span></div><div style="font-size:11px;color:var(--tx2);margin-top:2px">Тип: ${r.type==='gold'?'🟡 Золотая':'🔵 Синяя'}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveVerifyReq('${r.id}','${r.user_id}','${r.type}')"><i class="ti ti-check"></i>Одобрить</button><button class="ba da" onclick="rejectVerifyReq('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
+  // Add community verify requests
+  const{data:creqs}=await sb.from('community_verify_requests').select('*,communities(name,avatar_color,avatar_initials),profiles(name,login)').eq('status','pending').order('created_at');
+  const commHtml=(creqs||[]).map(r=>{const c=r.communities;const p=r.profiles;return `<div class="ar rpt"><div class="av md ${c?c.avatar_color:'av-blue'}">${c?c.avatar_initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${c?esc(c.name):'?'} <span class="ch pending">Сообщество</span></div><div style="font-size:11px;color:var(--tx2)">от @${p?p.login:''}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveCommunityVerify('${r.id}','${r.community_id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="approveCommunityVerify('${r.id}','${r.community_id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button><button class="ba da" onclick="rejectCommunityVerify('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
+  body.innerHTML=commHtml+reqs.map(r=>{const p=r.profiles;return `<div class="ar rpt"><div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${p?esc(p.name):'?'} <span style="font-size:11px;color:var(--tx2)">@${p?p.login:''}</span></div><div style="font-size:11px;color:var(--tx2);margin-top:2px">Тип: ${r.type==='gold'?'🟡 Золотая':'🔵 Синяя'}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveVerifyReq('${r.id}','${r.user_id}','${r.type}')"><i class="ti ti-check"></i>Одобрить</button><button class="ba da" onclick="rejectVerifyReq('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
 }
 async function approveVerifyReq(reqId,userId,type){await sb.from('profiles').update({verified:type}).eq('id',userId);await sb.from('verify_requests').update({status:'approved'}).eq('id',reqId);await createNotif(userId,'system','Ваша заявка на верификацию одобрена!');renderAdmin();toast('Верификация выдана!','g');}
 async function rejectVerifyReq(reqId){await sb.from('verify_requests').update({status:'rejected'}).eq('id',reqId);renderAdmin();toast('Заявка отклонена','r');}
@@ -2281,6 +2298,89 @@ async function toggleHideOnline(checkbox){
   }
   CP=await loadP(CU.id);
   toast(val?'Онлайн скрыт':'Онлайн снова виден','g');
+}
+
+
+// COMMUNITY VERIFY REQUEST
+async function loadCommunityVerifyStatus(){
+  const ct=document.getElementById('community-verify-status');
+  if(!ct||!currentCommunity)return;
+  // Already verified
+  if(currentCommunity.verified&&currentCommunity.verified!=='none'){
+    const color=currentCommunity.verified==='gold'?'#BA7517':'#185FA5';
+    const name=currentCommunity.verified==='gold'?'Золотая (публичное сообщество)':'Синяя (верифицированное)';
+    ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg2);border-radius:var(--rm)">
+      <i class="ti ti-rosette-discount-check" style="font-size:20px;color:${color}"></i>
+      <div><div style="font-size:13px;font-weight:500">Верификация активна</div>
+      <div style="font-size:12px;color:var(--tx2)">${name}</div></div>
+    </div>`;
+    return;
+  }
+  // Check existing request
+  const{data:reqs}=await sb.from('community_verify_requests').select('*').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(1);
+  const req=reqs&&reqs.length?reqs[0]:null;
+  if(req){
+    const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};
+    const stColor={pending:'pending',approved:'open',rejected:'blk'};
+    ct.innerHTML=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);margin-bottom:4px">
+      <div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:6px">ЗАЯВКА НА ВЕРИФИКАЦИЮ</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="ch ${stColor[req.status]||'pending'}">${stMap[req.status]||req.status}</span>
+        <span style="font-size:12px;color:var(--tx2)">${req.reason.slice(0,60)}${req.reason.length>60?'...':''}</span>
+      </div>
+      ${req.status!=='pending'?`<button class="bsm" style="margin-top:8px;font-size:11px" onclick="openCommunityVerifyReq()"><i class="ti ti-plus"></i>Новая заявка</button>`:''}
+      <button class="bsm" style="margin-top:8px;font-size:11px;color:var(--re)" onclick="cancelCommunityVerifyReq('${req.id}')"><i class="ti ti-x"></i>Отозвать</button>
+    </div>`;
+  } else {
+    ct.innerHTML=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);margin-bottom:4px">
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">Подайте заявку на верификацию сообщества.</div>
+      <button class="bp" onclick="openCommunityVerifyReq()" style="font-size:12px"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button>
+    </div>`;
+  }
+}
+
+function openCommunityVerifyReq(){
+  document.getElementById('cvr-reason').value='';
+  document.getElementById('community-verify-modal').classList.add('on');
+}
+
+async function submitCommunityVerifyRequest(){
+  if(!currentCommunity)return;
+  const type=document.getElementById('cvr-type').value;
+  const reason=document.getElementById('cvr-reason').value.trim();
+  if(!reason){toast('Укажите причину','r');return;}
+  // Delete old rejected
+  await sb.from('community_verify_requests').delete().eq('community_id',currentCommunity.id).eq('status','rejected');
+  const{error}=await sb.from('community_verify_requests').insert({
+    community_id:currentCommunity.id,
+    user_id:CU.id,
+    reason:type+': '+reason,
+    status:'pending'
+  });
+  if(error){toast('Ошибка: '+error.message,'r');return;}
+  closeMod('community-verify-modal');
+  toast('Заявка отправлена!','g');
+  loadCommunityVerifyStatus();
+}
+
+async function cancelCommunityVerifyReq(id){
+  await sb.from('community_verify_requests').delete().eq('id',id);
+  toast('Заявка отозвана','g');
+  loadCommunityVerifyStatus();
+}
+
+
+async function approveCommunityVerify(reqId, communityId, type){
+  await sb.from('communities').update({verified:type}).eq('id',communityId);
+  await sb.from('community_verify_requests').update({status:'approved'}).eq('id',reqId);
+  renderAdmin();
+  toast('Верификация сообщества выдана!','g');
+}
+
+async function rejectCommunityVerify(reqId){
+  await sb.from('community_verify_requests').update({status:'rejected'}).eq('id',reqId);
+  renderAdmin();
+  toast('Заявка отклонена','r');
 }
 
 
