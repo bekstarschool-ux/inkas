@@ -676,6 +676,9 @@ async function showApp(){
   updateUI();
   document.getElementById('admin-nav-item').style.display=CP.role!=='user'?'flex':'none';
   document.getElementById('self-verify-btn').style.display=CP.role==='super'?'flex':'none';
+  // Show mobile nav
+  const mobNav=document.getElementById('mob-nav');
+  if(mobNav)mobNav.style.display='block';
   // FIX: restore last route on reload
   await handleRoute();
   loadPosts();
@@ -771,6 +774,7 @@ async function doLogout(){
   if(chatChannel){sb.removeChannel(chatChannel);chatChannel=null;}
   if(notifChannel){sb.removeChannel(notifChannel);notifChannel=null;}
   await sb.auth.signOut();CU=null;CP=null;
+  const mn=document.getElementById('mob-nav');if(mn)mn.style.display='none';
   document.getElementById('screen-main').classList.remove('on');
   document.getElementById('screen-auth').classList.add('on');
   document.getElementById('l-login').value='';document.getElementById('l-pass').value='';
@@ -1324,19 +1328,23 @@ async function toggleLike(postId){
   const el=document.getElementById('like-'+postId);
   const span=document.getElementById('likes-'+postId);
   if(!el||!span)return;
-  // Check DB state first to prevent double-liking
-  const{data:existing}=await sb.from('post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single();
+  // Get both like status AND actual count from DB
+  const[{data:existing},{data:post}]=await Promise.all([
+    sb.from('post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single(),
+    sb.from('posts').select('likes').eq('id',postId).single()
+  ]);
   const wasLiked=!!existing;
-  const cur=parseInt(span.textContent)||0;
+  const actualCount=post?post.likes:parseInt(span.textContent)||0;
+  const newCount=wasLiked?Math.max(0,actualCount-1):actualCount+1;
   // Update UI
   if(wasLiked){el.classList.remove('liked');}else{el.classList.add('liked');}
-  span.textContent=Math.max(0,wasLiked?cur-1:cur+1);
+  span.textContent=newCount;
   if(wasLiked){
     await sb.from('post_likes').delete().eq('post_id',postId).eq('user_id',CU.id);
-    await sb.from('posts').update({likes:Math.max(0,cur-1)}).eq('id',postId);
+    await sb.from('posts').update({likes:newCount}).eq('id',postId);
   } else {
     await sb.from('post_likes').insert({post_id:postId,user_id:CU.id});
-    await sb.from('posts').update({likes:cur+1}).eq('id',postId);
+    await sb.from('posts').update({likes:newCount}).eq('id',postId);
   }
 }
 
@@ -1838,10 +1846,14 @@ async function addCommunityPost(){
 }
 async function toggleCpLike(el,postId,cur){
   const sp=el.querySelector('span');
-  // Check DB state first
-  const{data:existing}=await sb.from('community_post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single();
+  // Get both like status AND actual count from DB
+  const[{data:existing},{data:post}]=await Promise.all([
+    sb.from('community_post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single(),
+    sb.from('community_posts').select('likes').eq('id',postId).single()
+  ]);
   const wasLiked=!!existing;
-  const newN=Math.max(0,wasLiked?cur-1:cur+1);
+  const actualCount=post?post.likes:cur;
+  const newN=wasLiked?Math.max(0,actualCount-1):actualCount+1;
   if(wasLiked){el.classList.remove('liked');}else{el.classList.add('liked');}
   sp.textContent=newN;
   if(wasLiked){
