@@ -187,19 +187,33 @@
     @media(max-width:680px){
       .sb{display:none}
       .mnav{display:block}
-      .ct{padding:8px;padding-bottom:72px;gap:8px}
+      .app{flex-direction:column}
+      .mn{width:100%}
+      .ct{padding:8px;padding-bottom:72px;gap:8px;flex-direction:column}
+      .fd{width:100%}
       .scs{grid-template-columns:repeat(3,1fr)}
-      .ac2{padding:20px 16px;width:calc(100% - 24px);max-width:360px}
-      .msg{max-width:86%}
+      .ac2{padding:20px 16px;width:calc(100% - 24px);max-width:360px;margin:0 auto}
+      .msg{max-width:88%}
       .post,.pbox,.card{border-radius:var(--rm)}
-      #section-messages>div{flex-direction:column;min-height:calc(100vh - 120px)}
-      #chat-list-panel{width:100%!important;border-right:none!important;max-height:200px;overflow-y:auto}
-      #chat-area{flex:1}
+      /* Messages on mobile - stack vertically */
+      #section-messages>div{flex-direction:column!important;min-height:calc(100vh - 130px)!important}
+      #section-messages>div>div:first-child{width:100%!important;max-height:220px;border-right:none!important;border-bottom:.5px solid var(--br)}
+      #chat-area{flex:1;min-height:300px}
       .cms{padding:8px}
       .cir{padding:8px 10px}
-      .aac{max-width:100%}
-      .ar{flex-wrap:wrap}
+      .cinp{font-size:14px}
+      .aac{max-width:100%;flex-wrap:wrap}
+      .ar{flex-wrap:wrap;gap:6px}
       .scs .scl{font-size:9px}
+      .pcov{height:100px;margin-bottom:44px}
+      .av.lg{width:64px;height:64px;font-size:22px}
+      .pavw{bottom:-32px}
+      .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+      .tab{font-size:11px;padding:8px 10px}
+      .tb{padding:0 10px}
+      .sw{flex:1}
+      .si{font-size:13px}
+      .select-toolbar{padding:10px 12px}
     }
   </style>
 </head>
@@ -403,6 +417,11 @@
             <div class="fl"><label>Изменить логин (@)</label><input id="set-login" placeholder="new_login"><div class="fh">Только латиница, цифры и _ · Можно менять раз в 30 дней</div></div>
           </div></div>
           <div class="ss" id="verify-request-section"><div class="ssh">Верификация</div><div style="padding:16px"><div id="verify-status-block"></div></div></div>
+          <div class="ss"><div class="ssh">Обращение в поддержку</div><div style="padding:16px">
+            <div style="font-size:13px;color:var(--tx2);margin-bottom:10px;line-height:1.6">Если у вас возникли вопросы или проблемы — напишите нам.</div>
+            <button class="bp" onclick="openSupportTicket()"><i class="ti ti-headset"></i>Написать в поддержку</button>
+            <div id="my-tickets-list" style="margin-top:12px"></div>
+          </div></div>
           <div class="ss" id="hide-online-section" style="display:none"><div class="ssh">Настройки администратора</div><div style="padding:16px">
             <div class="priv-row">
               <div>
@@ -443,7 +462,7 @@
             <div class="tab" onclick="swTab('reports',this)"><i class="ti ti-flag" style="font-size:12px"></i>Жалобы<span id="rep-cnt" class="nb am"></span></div>
             <div class="tab" onclick="swTab('verify_req',this)"><i class="ti ti-rosette-discount-check" style="font-size:12px"></i>Заявки<span id="vreq-cnt" class="nb am"></span></div>
             <div class="tab" onclick="swTab('staff',this)"><i class="ti ti-shield" style="font-size:12px"></i>Сотрудники</div>
-            <div class="tab" onclick="swTab('comm_admin',this)"><i class="ti ti-building-community" style="font-size:12px"></i>Сообщества</div>
+            <div class="tab" onclick="swTab('comm_admin',this)"><i class="ti ti-building-community" style="font-size:12px"></i>Сообщества</div><div class="tab" onclick="swTab('support',this)"><i class="ti ti-headset" style="font-size:12px"></i>Поддержка</div>
           </div>
           <div class="atbl" id="admin-body"></div>
         </div>
@@ -502,6 +521,19 @@
 .forward-item:hover{background:var(--bg2)}
 .forward-item.selected{background:var(--acl)}
 </style>
+<div class="mov" id="support-ticket-modal"><div class="md">
+  <div class="mtt">Обращение в поддержку</div>
+  <div class="mss">Мы ответим в ближайшее время.</div>
+  <div class="fl"><label>Тема</label><input type="text" id="ticket-subject" placeholder="Кратко опишите проблему"></div>
+  <div class="fl"><label>Сообщение</label><textarea id="ticket-message" placeholder="Подробно опишите ситуацию..." style="height:120px"></textarea></div>
+  <div class="mac"><button class="bsm" onclick="closeMod('support-ticket-modal')">Отмена</button><button class="ba bl2" onclick="submitSupportTicket()"><i class="ti ti-send"></i>Отправить</button></div>
+</div></div>
+<div class="mov" id="ticket-reply-modal"><div class="md">
+  <div class="mtt" id="trm-title">Ответить на обращение</div>
+  <div id="trm-body" style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6;max-height:150px;overflow-y:auto;background:var(--bg2);padding:10px;border-radius:var(--rm)"></div>
+  <div class="fl"><label>Ответ</label><textarea id="ticket-reply-text" placeholder="Ваш ответ..." style="height:100px"></textarea></div>
+  <div class="mac"><button class="bsm" onclick="closeMod('ticket-reply-modal')">Отмена</button><button class="ba su" onclick="submitTicketReply()"><i class="ti ti-check"></i>Отправить ответ</button></div>
+</div></div>
 <div class="mov" id="admin-note-modal"><div class="md">
   <div class="mtt">Заметка администратора</div>
   <div class="mss">Заметка будет видна всем пользователям на странице профиля.</div>
@@ -846,6 +878,7 @@ function initSettings(){
   // Load hide_online
   updateHideOnlineUI();
   renderVerifyStatus();
+  loadMyTickets();
 }
 
 function renderCpick(id,colors,selected,type){const ct=document.getElementById(id);if(!ct)return;ct.innerHTML=colors.map(c=>`<div class="copt av ${c}${c===selected?' on':''}" onclick="selColor('${c}','${type}','${id}',event)"></div>`).join('');}
@@ -855,7 +888,12 @@ function selCover(c,cid,e){selCoverColor=c;document.querySelectorAll('#'+cid+' .
 
 async function renderVerifyStatus(){
   const ct=document.getElementById('verify-status-block');if(!ct)return;
-  if(CP.verified!=='none'||CP.staff_verified){ct.innerHTML=`<div style="font-size:13px;color:var(--tx2);display:flex;align-items:center;gap:6px"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${CP.staff_verified?'#6B21A8':CP.verified==='gold'?'#BA7517':'#185FA5'}"></i>У вас уже есть верификация</div>`;return;}
+  if(CP.verified!=='none'||CP.staff_verified){
+    const vColor=CP.staff_verified?'#6B21A8':CP.verified==='gold'?'#BA7517':'#185FA5';
+    const vName=CP.staff_verified?'Фиолетовая (команда Инкас)':CP.verified==='gold'?'Золотая (публичная персона)':'Синяя (верифицированный)';
+    ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px"><i class="ti ti-rosette-discount-check" style="font-size:20px;color:${vColor}"></i><div><div style="font-size:13px;font-weight:500">Верификация активна</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">${vName}</div></div></div>`;
+    return;
+  }
   const{data:req}=await sb.from('verify_requests').select('*').eq('user_id',CU.id).single();
   if(req){const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13px">Заявка:</span><span class="ch ${req.status==='pending'?'pending':req.status==='approved'?'open':'blk'}">${stMap[req.status]||req.status}</span>${req.status!=='pending'?`<button class="bsm" onclick="cancelVerifyReq('${req.id}')"><i class="ti ti-x"></i>Отозвать</button>`:''}</div>`;}
   else{ct.innerHTML=`<div><div style="font-size:13px;color:var(--tx2);margin-bottom:10px">Подайте заявку на верификацию.</div><button class="bp" onclick="openVerifyReq()"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button></div>`;}
@@ -2097,7 +2135,7 @@ async function renderAdmin(){
   const{data:profiles}=await sb.from('profiles').select('*').order('created_at');
   const{data:reports}=await sb.from('reports').select('*,reporter:reporter_id(name,login),target:target_id(name,login)').order('created_at',{ascending:false});
   AP=profiles||[];AR=reports||[];updStats();
-  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);
+  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);else if(CT==='support')loadAdminTickets(body);
 }
 function updStats(){
   document.getElementById('s-u').textContent=AP.filter(u=>!u.is_deleted).length;
@@ -2309,6 +2347,102 @@ async function loadUserFriends(uid){
       </div>
       <i class="ti ti-chevron-right" style="color:var(--tx2)"></i>
     </div>`).join('')+'</div>';
+}
+
+
+// SUPPORT TICKETS
+let currentTicketId=null;
+
+function openSupportTicket(){
+  document.getElementById('ticket-subject').value='';
+  document.getElementById('ticket-message').value='';
+  document.getElementById('support-ticket-modal').classList.add('on');
+}
+
+async function submitSupportTicket(){
+  const subject=document.getElementById('ticket-subject').value.trim();
+  const message=document.getElementById('ticket-message').value.trim();
+  if(!subject||!message){toast('Заполните все поля','r');return;}
+  const{error}=await sb.from('support_tickets').insert({user_id:CU.id,subject,message,status:'open'});
+  if(error){toast('Ошибка отправки','r');return;}
+  closeMod('support-ticket-modal');
+  toast('Обращение отправлено!','g');
+  loadMyTickets();
+}
+
+async function loadMyTickets(){
+  const ct=document.getElementById('my-tickets-list');if(!ct)return;
+  const{data:tickets}=await sb.from('support_tickets').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(10);
+  if(!tickets||!tickets.length){ct.innerHTML='';return;}
+  ct.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Мои обращения</div>'+
+    tickets.map(t=>`<div style="border:.5px solid var(--br);border-radius:var(--rm);padding:10px;margin-bottom:8px;cursor:pointer" onclick="viewTicket('${t.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:500">${esc(t.subject)}</div>
+        <span class="ch ${t.status==='open'?'open':t.admin_reply?'blue':'closed'}">${t.status==='open'?'Открыто':t.admin_reply?'Есть ответ':'Закрыто'}</span>
+      </div>
+      <div style="font-size:11px;color:var(--tx2)">${ago(t.created_at)}</div>
+      ${t.admin_reply?`<div style="margin-top:6px;padding:6px 8px;background:var(--acl);border-radius:var(--rm);font-size:12px;color:var(--ac)"><i class="ti ti-message-reply" style="font-size:11px"></i> Есть ответ от поддержки</div>`:''}
+    </div>`).join('');
+}
+
+function viewTicket(id){
+  // Open in modal - show full ticket
+  const ticket=null; // will load
+  sb.from('support_tickets').select('*').eq('id',id).single().then(({data:t})=>{
+    if(!t)return;
+    document.getElementById('trm-title').textContent=t.subject;
+    document.getElementById('trm-body').innerHTML=
+      `<div style="margin-bottom:8px">${esc(t.message)}</div>`+
+      (t.admin_reply?`<div style="margin-top:8px;padding:8px;background:var(--acl);border-radius:var(--rm)"><div style="font-size:10px;color:var(--ac);margin-bottom:4px">Ответ поддержки:</div>${esc(t.admin_reply)}</div>`:'<div style="font-size:12px;color:var(--tx2);margin-top:8px">Ответ ещё не получен</div>');
+    document.getElementById('ticket-reply-text').style.display='none';
+    document.querySelector('#ticket-reply-modal .mac button:last-child').style.display='none';
+    document.getElementById('ticket-reply-modal').classList.add('on');
+  });
+}
+
+// ADMIN: view and reply to tickets
+async function loadAdminTickets(body){
+  const{data:tickets}=await sb.from('support_tickets').select('*,profiles(name,login,initials,cls)').order('created_at',{ascending:false}).limit(50);
+  if(!tickets||!tickets.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Нет обращений</div>';return;}
+  body.innerHTML=tickets.map(t=>{
+    const p=t.profiles;
+    return `<div class="ar${t.status==='open'?' rpt':''}">
+      <div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${esc(t.subject)}</div>
+        <div style="font-size:11px;color:var(--tx2)">@${p?p.login:''} · ${ago(t.created_at)}</div>
+        <div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(t.message.slice(0,100))}${t.message.length>100?'...':''}</div>
+        ${t.admin_reply?`<div style="font-size:11px;color:var(--ac);margin-top:2px">Ответ: ${esc(t.admin_reply.slice(0,60))}</div>`:''}
+      </div>
+      <div class="aac">
+        ${t.status==='open'?`<button class="ba bl2" onclick="openTicketReply('${t.id}','${ea(t.subject)}','${ea(t.message)}')"><i class="ti ti-message-reply"></i>Ответить</button>`:''}
+        <button class="ba gh" onclick="closeTicket('${t.id}')"><i class="ti ti-check"></i>Закрыть</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openTicketReply(id,subject,message){
+  currentTicketId=id;
+  document.getElementById('trm-title').textContent='Ответ: '+subject;
+  document.getElementById('trm-body').textContent=message;
+  document.getElementById('ticket-reply-text').style.display='block';
+  document.getElementById('ticket-reply-text').value='';
+  document.querySelector('#ticket-reply-modal .mac button:last-child').style.display='flex';
+  document.getElementById('ticket-reply-modal').classList.add('on');
+}
+
+async function submitTicketReply(){
+  const reply=document.getElementById('ticket-reply-text').value.trim();
+  if(!reply){toast('Введите ответ','r');return;}
+  await sb.from('support_tickets').update({admin_reply:reply,status:'answered',updated_at:new Date().toISOString()}).eq('id',currentTicketId);
+  closeMod('ticket-reply-modal');toast('Ответ отправлен!','g');
+  renderAdmin();
+}
+
+async function closeTicket(id){
+  await sb.from('support_tickets').update({status:'closed'}).eq('id',id);
+  renderAdmin();toast('Закрыто','g');
 }
 
 
