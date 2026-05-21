@@ -359,7 +359,7 @@
             <div style="height:120px;border-radius:var(--rl) var(--rl) 0 0;position:relative;margin-bottom:44px;background:#3C3489" id="cp-cover"><div style="position:absolute;bottom:-36px;left:20px"><div class="av lg" id="cp-av" style="border:3px solid var(--bg)">С</div></div></div>
             <div style="padding:12px 20px">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
-                <div><div style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap" id="cp-name">...</div><div style="font-size:12px;color:var(--tx2);margin-top:2px" id="cp-desc">...</div><div style="font-size:12px;color:var(--tx2);margin-top:4px" id="cp-members">0 участников</div></div>
+                <div><div style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap" id="cp-name">...</div><div style="font-size:12px;color:var(--tx2);margin-top:2px" id="cp-desc">...</div><div style="font-size:11px;color:var(--tx2);margin-top:2px" id="cp-custom-id"></div><div style="font-size:12px;color:var(--tx2);margin-top:4px" id="cp-members">0 участников</div></div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="bsm" id="cp-join-btn" onclick="toggleJoinCommunity()">Вступить</button><button class="bsm" id="cp-settings-btn" onclick="openCommunitySettings()" style="display:none"><i class="ti ti-settings"></i></button></div>
               </div>
             </div>
@@ -477,8 +477,8 @@
 <div class="mov" id="role-modal"><div class="md"><div class="mtt" id="rm-t">Назначить роль</div><div class="mss" id="rm-s"></div><select id="r-role"><option value="support">Техподдержка</option><option value="mod">Модератор</option><option value="admin">Администратор</option><option value="super">Супер-админ</option><option value="user">Снять роль</option></select><div class="mac"><button class="bsm" onclick="closeMod('role-modal')">Отмена</button><button class="ba pu" onclick="confirmRole()"><i class="ti ti-shield"></i>Назначить</button></div></div></div>
 <div class="mov" id="pwd-modal"><div class="md"><div class="mtt" id="pm-t">Сброс пароля</div><div class="ib g"><i class="ti ti-lock"></i> Пароли зашифрованы — только сброс.</div><div class="mss" id="pm-s"></div><div class="mac"><button class="bsm" onclick="closeMod('pwd-modal')">Отмена</button><button class="ba tl" onclick="confirmReset()"><i class="ti ti-refresh"></i>Сбросить</button></div></div></div>
 <div class="mov" id="report-modal"><div class="md"><div class="mtt" id="rep-mt"></div><div class="mss" id="rep-ms"></div><div class="mac"><button class="bsm" onclick="closeMod('report-modal')">Закрыть</button><button class="ba da" onclick="reportBlock()"><i class="ti ti-ban"></i>Заблокировать</button><button class="ba su" onclick="resolveReport()"><i class="ti ti-check"></i>Закрыть жалобу</button></div></div></div>
-<div class="mov" id="create-community-modal"><div class="md"><div class="mtt">Создать сообщество</div><div class="fl"><label>Название</label><input type="text" id="cm-name" placeholder="Название"></div><div class="fl"><label>Описание</label><textarea id="cm-desc" placeholder="О чём сообщество?"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cm-color-pick"></div></div><div class="mac"><button class="bsm" onclick="closeMod('create-community-modal')">Отмена</button><button class="ba bl2" onclick="createCommunity()"><i class="ti ti-plus"></i>Создать</button></div></div></div>
-<div class="mov" id="community-settings-modal"><div class="md"><div class="mtt">Настройки сообщества</div><div class="fl"><label>Название</label><input type="text" id="cs-name"></div><div class="fl"><label>Описание</label><textarea id="cs-desc"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cs-color-pick"></div></div><div class="mac"><button class="bdanger" onclick="deleteCommunity()" style="margin-right:auto"><i class="ti ti-trash"></i>Удалить</button><button class="bsm" onclick="closeMod('community-settings-modal')">Отмена</button><button class="ba bl2" onclick="saveCommunitySettings()"><i class="ti ti-check"></i>Сохранить</button></div></div></div>
+<div class="mov" id="create-community-modal"><div class="md"><div class="mtt">Создать сообщество</div><div class="fl"><label>Название</label><input type="text" id="cm-name" placeholder="Название"></div><div class="fl"><label>ID сообщества</label><input type="text" id="cm-id" placeholder="my_community"><div class="fh">Только латиница, цифры и _ · Используется в ссылке</div></div><div class="fl"><label>Описание</label><textarea id="cm-desc" placeholder="О чём сообщество?"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cm-color-pick"></div></div><div class="mac"><button class="bsm" onclick="closeMod('create-community-modal')">Отмена</button><button class="ba bl2" onclick="createCommunity()"><i class="ti ti-plus"></i>Создать</button></div></div></div>
+<div class="mov" id="community-settings-modal"><div class="md"><div class="mtt">Настройки сообщества</div><div class="fl"><label>Название</label><input type="text" id="cs-name"></div><div class="fl"><label>ID сообщества</label><input type="text" id="cs-id" placeholder="my_community"><div class="fh">Только латиница, цифры и _ · Используется в ссылке</div></div><div class="fl"><label>Описание</label><textarea id="cs-desc"></textarea></div><div class="fl"><label>Цвет аватара</label><div class="cpick" id="cs-color-pick"></div></div><div class="mac"><button class="bdanger" onclick="deleteCommunity()" style="margin-right:auto"><i class="ti ti-trash"></i>Удалить</button><button class="bsm" onclick="closeMod('community-settings-modal')">Отмена</button><button class="ba bl2" onclick="saveCommunitySettings()"><i class="ti ti-check"></i>Сохранить</button></div></div></div>
 <div class="mov" id="group-chat-modal"><div class="md"><div class="mtt">Новый групповой чат</div><div class="fl"><label>Название группы</label><input type="text" id="gc-name" placeholder="Название"></div><div class="mss">Выберите участников из друзей:</div><div id="gc-friends-list" style="max-height:200px;overflow-y:auto;margin-bottom:12px;border:.5px solid var(--br);border-radius:var(--rm)"></div><div class="mac"><button class="bsm" onclick="closeMod('group-chat-modal')">Отмена</button><button class="ba pu" onclick="createGroupChat()"><i class="ti ti-users-plus"></i>Создать</button></div></div></div>
 <div class="mov" id="self-verify-modal"><div class="md"><div class="mtt">Верифицировать себя</div><div class="ib v"><i class="ti ti-rosette-discount-check"></i> Как супер-администратор вы можете выдать себе любую галочку.</div><select id="sv-type"><option value="blue">🔵 Синяя</option><option value="gold">🟡 Золотая</option><option value="violet">🟣 Фиолетовая — команда Инкас</option><option value="none">Убрать галочку</option></select><div class="mac"><button class="bsm" onclick="closeMod('self-verify-modal')">Отмена</button><button class="ba bl2" onclick="confirmSelfVerify()"><i class="ti ti-check"></i>Применить</button></div></div></div>
 <div class="mov" id="new-topic-modal"><div class="md"><div class="mtt">Новое обсуждение</div><div class="fl"><label>Тема</label><input type="text" id="topic-title" placeholder="Название темы"></div><div class="fl"><label>Описание</label><textarea id="topic-content" placeholder="Опишите тему..."></textarea></div><div class="mac"><button class="bsm" onclick="closeMod('new-topic-modal')">Отмена</button><button class="ba bl2" onclick="createTopic()"><i class="ti ti-plus"></i>Создать</button></div></div></div>
@@ -586,8 +586,11 @@ async function handleRoute(){
     }
     // Community: /community/id
     if(hash.startsWith('/community/')){
-      const id = hash.replace('/community/','');
-      await openCommunityPage(id, false);
+      const slug = hash.replace('/community/','');
+      // Try custom_id first, then UUID
+      let{data:c}=await sb.from('communities').select('id').eq('custom_id',slug).single();
+      if(!c){const{data:c2}=await sb.from('communities').select('id').eq('id',slug).single();c=c2;}
+      if(c)await openCommunityPage(c.id, false);
       return;
     }
     // Messages: /messages/partnerid
@@ -1483,22 +1486,18 @@ async function toggleLike(postId){
   const el=document.getElementById('like-'+postId);
   const span=document.getElementById('likes-'+postId);
   if(!el||!span)return;
-  const wasLiked=el.classList.contains('liked');
+  // Check DB state first to prevent double-liking
+  const{data:existing}=await sb.from('post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single();
+  const wasLiked=!!existing;
   const cur=parseInt(span.textContent)||0;
-  // Optimistic UI update
+  // Update UI
   if(wasLiked){el.classList.remove('liked');}else{el.classList.add('liked');}
   span.textContent=Math.max(0,wasLiked?cur-1:cur+1);
   if(wasLiked){
-    // Remove like
     await sb.from('post_likes').delete().eq('post_id',postId).eq('user_id',CU.id);
     await sb.from('posts').update({likes:Math.max(0,cur-1)}).eq('id',postId);
   } else {
-    // Add like - ignore duplicate error
-    const{error}=await sb.from('post_likes').insert({post_id:postId,user_id:CU.id});
-    if(error&&error.code==='23505'){
-      // Already liked - revert UI
-      el.classList.add('liked');span.textContent=cur;return;
-    }
+    await sb.from('post_likes').insert({post_id:postId,user_id:CU.id});
     await sb.from('posts').update({likes:cur+1}).eq('id',postId);
   }
 }
@@ -1899,7 +1898,8 @@ async function loadCommunities(){
 }
 async function openCommunityPage(id){
   closeSearch();document.getElementById('srch').value='';
-  const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)return;
+  const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)retur
+  if(updateHash!==false){window.location.hash='/community/'+(c.custom_id||id);}n;
   currentCommunity=c;currentCpTab='posts';
   const cpav=document.getElementById('cp-av');cpav.className='av lg '+c.avatar_color;cpav.textContent=c.avatar_initials;
   document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i><span class="vtip">${c.verified==='gold'?'Публичная персона':'Верифицировано'}</span></span>`:'');
@@ -2022,17 +2022,43 @@ async function toggleJoinCommunity(){
 }
 function openCreateCommunity(){document.getElementById('cm-name').value='';document.getElementById('cm-desc').value='';selCmColor=AVC[0];renderCpick('cm-color-pick',AVC,selCmColor,'cm');document.getElementById('create-community-modal').classList.add('on');}
 async function createCommunity(){
-  const name=document.getElementById('cm-name').value.trim(),desc=document.getElementById('cm-desc').value.trim();
+  const name=document.getElementById('cm-name').value.trim();
+  const desc=document.getElementById('cm-desc').value.trim();
+  const customId=document.getElementById('cm-id').value.trim().toLowerCase();
   if(!name){toast('Введите название','r');return;}
   if(containsBadWord(name)){toast('Название содержит недопустимые слова','r');return;}
+  if(customId&&!/^[a-zA-Z0-9_]+$/.test(customId)){toast('ID: только латиница, цифры и _','r');return;}
+  // Check ID uniqueness
+  if(customId){
+    const{data:ex}=await sb.from('communities').select('id').eq('custom_id',customId).single();
+    if(ex){toast('Этот ID уже занят','r');return;}
+  }
   const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()||'СО';
-  const{data,error}=await sb.from('communities').insert({name,description:desc,owner_id:CU.id,avatar_color:selCmColor||AVC[0],avatar_initials:initials,members_count:1}).select().single();
+  const insertData={name,description:desc,owner_id:CU.id,avatar_color:selCmColor||AVC[0],avatar_initials:initials,members_count:1};
+  if(customId)insertData.custom_id=customId;
+  const{data,error}=await sb.from('communities').insert(insertData).select().single();
   if(error){toast('Ошибка создания','r');return;}
   await sb.from('community_members').insert({community_id:data.id,user_id:CU.id,role:'owner'});
   closeMod('create-community-modal');toast('Сообщество создано!','g');loadCommunities();
 }
-function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
-async function saveCommunitySettings(){if(!currentCommunity)return;const name=document.getElementById('cs-name').value.trim();if(!name){toast('Введите название','r');return;}const desc=document.getElementById('cs-desc').value.trim();const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();await sb.from('communities').update({name,description:desc,avatar_color:selCsColor||currentCommunity.avatar_color,avatar_initials:initials}).eq('id',currentCommunity.id);closeMod('community-settings-modal');toast('Обновлено!','g');openCommunityPage(currentCommunity.id);}
+function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-id').value=currentCommunity.custom_id||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
+async function saveCommunitySettings(){
+  if(!currentCommunity)return;
+  const name=document.getElementById('cs-name').value.trim();
+  if(!name){toast('Введите название','r');return;}
+  const desc=document.getElementById('cs-desc').value.trim();
+  const customId=document.getElementById('cs-id').value.trim().toLowerCase();
+  if(customId&&!/^[a-zA-Z0-9_]+$/.test(customId)){toast('ID: только латиница, цифры и _','r');return;}
+  if(customId&&customId!==currentCommunity.custom_id){
+    const{data:ex}=await sb.from('communities').select('id').eq('custom_id',customId).single();
+    if(ex){toast('Этот ID уже занят','r');return;}
+  }
+  const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const updateData={name,description:desc,avatar_color:selCsColor||currentCommunity.avatar_color,avatar_initials:initials};
+  if(customId)updateData.custom_id=customId;
+  await sb.from('communities').update(updateData).eq('id',currentCommunity.id);
+  closeMod('community-settings-modal');toast('Обновлено!','g');openCommunityPage(currentCommunity.id);
+}
 async function deleteCommunity(){if(!currentCommunity)return;if(!confirm('Удалить сообщество?'))return;await sb.from('communities').delete().eq('id',currentCommunity.id);closeMod('community-settings-modal');currentCommunity=null;toast('Сообщество удалено','r');showSection('communities');}
 
 // ── ADMIN ──
