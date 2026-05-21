@@ -410,7 +410,7 @@
           </div></div>
           <div class="ss" id="hide-online-section"><div class="ssh">Конфиденциальность</div><div style="padding:16px">
             <div class="priv-row"><span style="font-size:13px">Скрыть статус онлайн <span style="font-size:11px;color:var(--tx2)">(только для модераторов и выше)</span></span>
-              <label style="position:relative;display:inline-block;width:40px;height:22px"><input type="checkbox" id="hide-online-toggle" onchange="toggleHideOnline()" style="opacity:0;width:0;height:0"><span style="position:absolute;cursor:pointer;inset:0;background:var(--br2);border-radius:11px;transition:.3s" id="hide-online-slider"></span></label>
+              <label style="position:relative;display:inline-block;width:40px;height:22px"><input type="checkbox" id="hide-online-toggle" onchange="toggleHideOnline(this)" style="opacity:0;width:0;height:0"><span style="position:absolute;cursor:pointer;inset:0;background:var(--br2);border-radius:11px;transition:.3s" id="hide-online-slider"></span></label>
             </div>
           </div></div>
           <div class="ss"><div class="ssh">Логин</div><div style="padding:16px">
@@ -584,14 +584,14 @@ let currentChatPartnerId=null;
 
 // ── ROUTER ──
 const ROUTES = {
-  '/feed': ()=>showSection('feed'),
-  '/profile': ()=>showSection('profile'),
-  '/messages': ()=>showSection('messages'),
-  '/friends': ()=>showSection('friends'),
-  '/communities': ()=>showSection('communities'),
-  '/notifications': ()=>showSection('notifications'),
-  '/settings': ()=>showSection('settings'),
-  '/admin': ()=>showSection('admin'),
+  '/feed': ()=>showSection('feed',false),
+  '/profile': ()=>showSection('profile',false),
+  '/messages': ()=>showSection('messages',false),
+  '/friends': ()=>showSection('friends',false),
+  '/communities': ()=>showSection('communities',false),
+  '/notifications': ()=>showSection('notifications',false),
+  '/settings': ()=>showSection('settings',false),
+  '/admin': ()=>showSection('admin',false),
 };
 
 function getHash(){
@@ -818,7 +818,7 @@ function updateUI(){
 }
 
 // These sections have their own hash handlers via openUserProfile/openCommunityPage/openChat
-const HASH_SKIP_SECTIONS = new Set(['user-profile','community-page']);
+const HASH_SKIP_SECTIONS = new Set(['user-profile','community-page','settings','notifications','friends','communities']);
 
 function showSection(s, updateHash=true){
   document.querySelectorAll('.sec').forEach(el=>el.classList.remove('on'));
@@ -862,7 +862,8 @@ function initSettings(){
   const loginInp=document.getElementById('set-login');if(loginInp)loginInp.value='';
   // Show hide-online section for admins
   const hoSection=document.getElementById('hide-online-section');
-  if(hoSection)hoSection.style.display=(CP.role!=='user')?'block':'none';
+  const adminRoles=['mod','admin','super','support'];
+  if(hoSection)hoSection.style.display=adminRoles.includes(CP.role)?'block':'none';
   // Set hide_online toggle
   const hoToggle=document.getElementById('hide-online-toggle');
   const hoSlider=document.getElementById('hide-online-slider');
@@ -887,301 +888,100 @@ function selColor(cls,type,cid,e){if(type==='av')selAvColor=cls;else if(type==='
 function selCover(c,cid,e){selCoverColor=c;document.querySelectorAll('#'+cid+' .copt').forEach(el=>el.classList.remove('on'));if(e&&e.target)e.target.classList.add('on');}
 
 async function renderVerifyStatus(){
-  const ct=document.getElementById('verify-status-block');if(!ct)return;
+  const ct=document.getElementById('verify-status-block');
+  if(!ct)return;
+  ct.innerHTML='<div style="padding:8px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div>';
+  // User already has verification
   if(CP.verified!=='none'||CP.staff_verified){
     const vColor=CP.staff_verified?'#6B21A8':CP.verified==='gold'?'#BA7517':'#185FA5';
     const vName=CP.staff_verified?'Фиолетовая (команда Инкас)':CP.verified==='gold'?'Золотая (публичная персона)':'Синяя (верифицированный)';
-    ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px"><i class="ti ti-rosette-discount-check" style="font-size:20px;color:${vColor}"></i><div><div style="font-size:13px;font-weight:500">Верификация активна</div><div style="font-size:12px;color:var(--tx2);margin-top:2px">${vName}</div></div></div>`;
+    ct.innerHTML=`<div style="display:flex;align-items:center;gap:10px">
+      <i class="ti ti-rosette-discount-check" style="font-size:24px;color:${vColor}"></i>
+      <div>
+        <div style="font-size:13px;font-weight:500">Верификация активна</div>
+        <div style="font-size:12px;color:var(--tx2);margin-top:2px">${vName}</div>
+      </div>
+    </div>`;
     return;
   }
-  const{data:req}=await sb.from('verify_requests').select('*').eq('user_id',CU.id).single();
-  if(req){const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13px">Заявка:</span><span class="ch ${req.status==='pending'?'pending':req.status==='approved'?'open':'blk'}">${stMap[req.status]||req.status}</span>${req.status!=='pending'?`<button class="bsm" onclick="cancelVerifyReq('${req.id}')"><i class="ti ti-x"></i>Отозвать</button>`:''}</div>`;}
-  else{ct.innerHTML=`<div><div style="font-size:13px;color:var(--tx2);margin-bottom:10px">Подайте заявку на верификацию.</div><button class="bp" onclick="openVerifyReq()"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button></div>`;}
-}
-function openVerifyReq(){document.getElementById('vreq-reason').value='';document.getElementById('verify-request-modal').classList.add('on');}
-async function submitVerifyRequest(){const type=document.getElementById('vreq-type').value,reason=document.getElementById('vreq-reason').value.trim();if(!reason){toast('Укажите причину','r');return;}await sb.from('verify_requests').upsert({user_id:CU.id,type,reason,status:'pending'});closeMod('verify-request-modal');toast('Заявка отправлена!','g');renderVerifyStatus();}
-async function cancelVerifyReq(id){await sb.from('verify_requests').delete().eq('id',id);toast('Заявка отозвана','g');renderVerifyStatus();}
-
-// FIX: saveSettings now saves privacy correctly and reloads CP
-async function saveSettings(){
-  const fname=document.getElementById('set-fname').value.trim();
-  const lname=document.getElementById('set-lname').value.trim();
-  // Special exception: inkas account can have no surname
-  const isInkas=CP.login==='inkas';
-  if(!fname){toast('Введите имя','r');return;}
-  if(!isInkas&&!lname){toast('Фамилия обязательна','r');return;}
-  if(!isValidName(fname)){toast('Имя содержит недопустимые символы','r');return;}
-  if(!isInkas&&lname&&!isValidName(lname)){toast('Фамилия содержит недопустимые символы','r');return;}
-  if(containsBadWord(fname)||(lname&&containsBadWord(lname))){toast('Имя содержит недопустимые слова','r');return;}
-  const fullName=lname?fname+' '+lname:fname;
-  const bio=document.getElementById('set-bio').value.trim();
-  const city=document.getElementById('set-city').value.trim();
-  const website=document.getElementById('set-website').value.trim();
-  const privMsg=document.getElementById('priv-msg').value;
-  const privWall=document.getElementById('priv-wall').value;
-  const privFriends=document.getElementById('priv-friends').value;
-  const initials=lname?(fname[0]+(lname[0]||'')).toUpperCase():fname.slice(0,2).toUpperCase();
-  // FIX: ensure color values fallback to current CP values
-  if(!selAvColor)selAvColor=CP.cls;
-  if(!selCoverColor)selCoverColor=CP.cover_color||'#185FA5';
-  const{error}=await sb.from('profiles').update({
-    name:fullName,bio,city,website,
-    cls:selAvColor||CP.cls,
-    cover_color:selCoverColor||CP.cover_color||'#185FA5',
-    initials,
-    privacy_messages:privMsg,
-    privacy_wall:privWall,
-    privacy_friends:privFriends
-  }).eq('id',CU.id);
-  if(error){toast('Ошибка сохранения: '+error.message,'r');return;}
-  // FIX: reload CP from DB after save
-  CP=await loadP(CU.id);
-  updateUI();
-  // Also change login if field has value
-  const loginField=document.getElementById('set-login');
-  if(loginField&&loginField.value.trim())await changeLogin();
-  toast('Профиль обновлён!','g');
-  showSection('profile');
-}
-
-// CHAT HELPERS
-function handleChatKey(e){
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}
-  else if(e.key==='Enter'&&e.shiftKey){/* allow newline */}
-}
-function autoResizeChatInp(el){
-  el.style.height='auto';
-  el.style.height=Math.min(el.scrollHeight,120)+'px';
-}
-
-// SELECT MODE
-let selectedMsgs=new Set();
-let selectMode=false;
-
-function toggleMsgSelect(id,wrapper){
-  if(selectedMsgs.has(id)){
-    selectedMsgs.delete(id);
-    if(wrapper)wrapper.classList.remove('selected');
-  } else {
-    selectedMsgs.add(id);
-    if(wrapper)wrapper.classList.add('selected');
-  }
-  updateSelectToolbar();
-  if(selectedMsgs.size===0)cancelSelect();
-}
-
-function cancelSelect(){
-  selectMode=false;
-  selectedMsgs.clear();
-  const cms=document.getElementById('chat-msgs');
-  if(cms)cms.classList.remove('select-mode');
-  document.querySelectorAll('.msg-select').forEach(el=>el.style.display='none');
-  document.querySelectorAll('.msg-wrapper.selected').forEach(el=>el.classList.remove('selected'));
-  updateSelectToolbar();
-}
-
-function updateSelectToolbar(){
-  const tb=document.getElementById('select-toolbar');
-  const cnt=document.getElementById('select-count');
-  if(tb)tb.classList.toggle('on',selectedMsgs.size>0);
-  if(cnt)cnt.textContent=selectedMsgs.size+' выбрано';
-}
-
-function deleteSelected(){
-  if(!selectedMsgs.size)return;
-  pendingDeleteId='batch';
-  document.getElementById('delete-msg-modal').classList.add('on');
-}
-
-
-// FORWARD
-async function forwardSelected(){
-  if(!selectedMsgs.size)return;
-  // Load contacts for forwarding
-  const fl=document.getElementById('forward-list');
-  fl.innerHTML='<div style="padding:10px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div>';
-  document.getElementById('forward-modal').classList.add('on');
-  // Get friends + recent chats
-  const{data:fdata}=await sb.from('friends').select('*').or(`sender_id.eq.${CU.id},receiver_id.eq.${CU.id}`).eq('status','accepted');
-  const ids=(fdata||[]).map(f=>f.sender_id===CU.id?f.receiver_id:f.sender_id);
-  if(!ids.length){fl.innerHTML='<div style="padding:12px;font-size:12px;color:var(--tx2)">Нет друзей для пересылки</div>';return;}
-  const{data:profiles}=await sb.from('profiles').select('id,name,initials,cls').in('id',ids);
-  fl.innerHTML=(profiles||[]).map(p=>`<div class="forward-item" onclick="doForward('${p.id}','${ea(p.name)}')">
-    <div class="av sm ${p.cls}">${p.initials}</div>
-    <div style="font-size:13px">${esc(p.name)}</div>
-  </div>`).join('');
-}
-async function doForward(toId,toName){
-  // Get selected message texts
-  const msgEls=document.querySelectorAll('.msg-wrapper.selected .msg');
-  const texts=[...msgEls].map(el=>{
-    const clone=el.cloneNode(true);
-    clone.querySelectorAll('.mt2,.msg-actions').forEach(e=>e.remove());
-    return clone.textContent.trim();
-  }).filter(Boolean);
-  if(!texts.length){closeMod('forward-modal');cancelSelect();return;}
-  const forwardedText=texts.join('\n---\n');
-  await sb.from('messages').insert({sender_id:CU.id,receiver_id:toId,content:'📨 '+forwardedText,forwarded_from:CU.id,forwarded_text:forwardedText});
-  closeMod('forward-modal');cancelSelect();
-  toast('Переслано '+toName,'g');
-  loadChatList();
-}
-async function deleteSelected(){
-  if(!selectedMsgs.size)return;
-  // Show delete modal for batch
-  pendingDeleteId='batch';
-  document.getElementById('delete-msg-modal').classList.add('on');
-}
-// Override deleteMsgForMe/ForAll for batch
-const _origDeleteForMe=typeof deleteMsgForMe==='function'?deleteMsgForMe:null;
-async function deleteMsgForMe(){
-  if(pendingDeleteId==='batch'){
-    closeMod('delete-msg-modal');
-    for(const id of selectedMsgs){
-      await sb.from('messages').update({deleted_by_sender:true}).eq('id',id).eq('sender_id',CU.id);
-      await sb.from('messages').update({deleted_by_receiver:true}).eq('id',id).eq('receiver_id',CU.id);
-      const el=document.querySelector(`[data-id="${id}"]`);
-      if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
+  // Check existing request
+  try {
+    const{data:reqs,error}=await sb.from('verify_requests').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(1);
+    if(error){
+      console.error('verify_requests error:',error);
+      ct.innerHTML=`<div style="font-size:13px;color:var(--tx2);margin-bottom:10px">Подайте заявку на верификацию.</div><button class="bp" onclick="openVerifyReq()"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button>`;
+      return;
     }
-    cancelSelect();toast('Сообщения удалены','g');return;
-  }
-  closeMod('delete-msg-modal');
-  if(pendingDeleteType==='group'){
-    const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-    if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  } else {
-    const field=pendingDeleteIsOut?'deleted_by_sender':'deleted_by_receiver';
-    await sb.from('messages').update({[field]:true}).eq('id',pendingDeleteId);
-    const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-    if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  }
-  toast('Удалено у вас','g');
-}
-async function deleteMsgForAll(){
-  if(pendingDeleteId==='batch'){
-    closeMod('delete-msg-modal');
-    for(const id of selectedMsgs){
-      await sb.from('messages').update({deleted_by_sender:true,deleted_by_receiver:true}).eq('id',id);
-      const el=document.querySelector(`[data-id="${id}"]`);
-      if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
+    const req=reqs&&reqs.length?reqs[0]:null;
+    if(req){
+      const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};
+      const stColor={pending:'pending',approved:'open',rejected:'blk'};
+      ct.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13px">Заявка на верификацию:</span>
+          <span class="ch ${stColor[req.status]||'pending'}">${stMap[req.status]||req.status}</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Тип: ${req.type==='gold'?'🟡 Золотая':'🔵 Синяя'}</div>
+        <div style="font-size:12px;color:var(--tx2)">Причина: ${esc(req.reason)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="bsm" onclick="cancelVerifyReq('${req.id}')"><i class="ti ti-x"></i>Отозвать заявку</button>
+          ${req.status!=='pending'?`<button class="bp" onclick="openVerifyReq()"><i class="ti ti-plus"></i>Новая заявка</button>`:''}
+        </div>
+      </div>`;
+    } else {
+      ct.innerHTML=`<div>
+        <div style="font-size:13px;color:var(--tx2);margin-bottom:10px;line-height:1.6">
+          Подайте заявку — администрация рассмотрит её в ближайшее время.
+        </div>
+        <button class="bp" onclick="openVerifyReq()">
+          <i class="ti ti-rosette-discount-check"></i>Подать заявку на верификацию
+        </button>
+      </div>`;
     }
-    cancelSelect();toast('Сообщения удалены для всех','g');return;
+  } catch(e) {
+    console.error('renderVerifyStatus error:',e);
+    ct.innerHTML=`<div style="font-size:13px;color:var(--tx2);margin-bottom:10px">Подайте заявку на верификацию.</div><button class="bp" onclick="openVerifyReq()"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button>`;
   }
-  closeMod('delete-msg-modal');
-  if(pendingDeleteType==='group'){
-    await sb.from('group_messages').delete().eq('id',pendingDeleteId).eq('sender_id',CU.id);
-  } else {
-    await sb.from('messages').update({deleted_by_sender:true,deleted_by_receiver:true}).eq('id',pendingDeleteId);
+}
+
+function openVerifyReq(){
+  document.getElementById('vreq-reason').value='';
+  document.getElementById('vreq-type').value='blue';
+  document.getElementById('verify-request-modal').classList.add('on');
+}
+
+async function submitVerifyRequest(){
+  const type=document.getElementById('vreq-type').value;
+  const reason=document.getElementById('vreq-reason').value.trim();
+  if(!reason){toast('Укажите причину','r');return;}
+  const btn=document.querySelector('#verify-request-modal .mac .ba');
+  if(btn){btn.disabled=true;btn.textContent='Отправка...';}
+  try{
+    // Delete old rejected requests first
+    await sb.from('verify_requests').delete().eq('user_id',CU.id).eq('status','rejected');
+    const{error}=await sb.from('verify_requests').insert({user_id:CU.id,type,reason,status:'pending'});
+    if(error){
+      console.error('submitVerifyRequest error:',error);
+      toast('Ошибка: '+error.message,'r');
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Отправить';}
+      return;
+    }
+    closeMod('verify-request-modal');
+    toast('Заявка отправлена!','g');
+    await renderVerifyStatus();
+  } catch(e){
+    console.error('submitVerifyRequest catch:',e);
+    toast('Ошибка отправки','r');
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Отправить';}
   }
-  const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-  if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  toast('Удалено для всех','g');
 }
 
-// HIDE ONLINE for admins
-async function toggleHideOnline(checkbox){
-  const val=checkbox.checked;
-  const slider=document.getElementById('hide-online-slider');
-  if(slider)slider.style.background=val?'var(--ac)':'var(--br2)';
-  await sb.from('profiles').update({hide_online:val}).eq('id',CU.id);
-  CP=await loadP(CU.id);
-  toast(val?'Онлайн скрыт':'Онлайн виден','g');
+async function cancelVerifyReq(id){
+  await sb.from('verify_requests').delete().eq('id',id).eq('user_id',CU.id);
+  toast('Заявка отозвана','g');
+  await renderVerifyStatus();
 }
 
-// CHANGE LOGIN
-async function changeLogin(){
-  const newLogin=document.getElementById('set-login').value.trim();
-  if(!newLogin)return;
-  if(!/^[a-zA-Z0-9_]+$/.test(newLogin)){toast('Логин: только латиница, цифры и _','r');return;}
-  if(containsBadWord(newLogin)||isFakeName(newLogin)){toast('Этот логин недоступен','r');return;}
-  if(newLogin===CP.login){toast('Это уже ваш логин','r');return;}
-  // Check 30 day limit
-  if(CP.login_changed_at){
-    const daysSince=(Date.now()-new Date(CP.login_changed_at))/86400000;
-    if(daysSince<30&&CP.login!=='inkas'){toast('Логин можно менять раз в 30 дней. Осталось '+Math.ceil(30-daysSince)+' дн.','r');return;}
-  }
-  // Check uniqueness
-  const{data:ex}=await sb.from('profiles').select('id').eq('login',newLogin).single();
-  if(ex){toast('Логин уже занят','r');return;}
-  await sb.from('profiles').update({login:newLogin,login_changed_at:new Date().toISOString()}).eq('id',CU.id);
-  CP=await loadP(CU.id);updateUI();
-  document.getElementById('set-login').value='';
-  toast('Логин изменён на @'+newLogin,'g');
-}
-
-// ADMIN NOTE
-
-let adminNoteTargetId=null;
-function openAdminNote(){
-  if(!viewingUser)return;
-  adminNoteTargetId=viewingUser.id;
-  document.getElementById('admin-note-text').value=viewingUser.admin_note||'';
-  document.getElementById('admin-note-modal').classList.add('on');
-}
-async function saveAdminNote(){
-  if(!adminNoteTargetId)return;
-  const note=document.getElementById('admin-note-text').value.trim();
-  await sb.from('profiles').update({admin_note:note}).eq('id',adminNoteTargetId);
-  closeMod('admin-note-modal');
-  toast(note?'Заметка сохранена':'Заметка удалена','g');
-  // Refresh profile view
-  await openUserProfile(adminNoteTargetId);
-}
-
-// DELETE MESSAGE MODAL
-let pendingDeleteId=null,pendingDeleteIsOut=false,pendingDeleteType=null;
-function openDeleteMsgModal(id,isOut,type='dm'){
-  pendingDeleteId=id;pendingDeleteIsOut=isOut;pendingDeleteType=type;
-  // Only show "for all" if it's sender's own message
-  document.getElementById('del-for-all').style.display=isOut?'flex':'none';
-  document.getElementById('delete-msg-modal').classList.add('on');
-}
-async function deleteMsgForMe(){
-  closeMod('delete-msg-modal');
-  if(pendingDeleteType==='group'){
-    // For group messages, only sender can delete for all, others only hide locally
-    const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-    if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  } else {
-    const field=pendingDeleteIsOut?'deleted_by_sender':'deleted_by_receiver';
-    await sb.from('messages').update({[field]:true}).eq('id',pendingDeleteId);
-    const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-    if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  }
-  toast('Удалено у вас','g');
-}
-async function deleteMsgForAll(){
-  closeMod('delete-msg-modal');
-  if(pendingDeleteType==='group'){
-    await sb.from('group_messages').delete().eq('id',pendingDeleteId).eq('sender_id',CU.id);
-  } else {
-    await sb.from('messages').update({deleted_by_sender:true,deleted_by_receiver:true}).eq('id',pendingDeleteId);
-  }
-  const el=document.querySelector(`[data-id="${pendingDeleteId}"]`);
-  if(el){el.innerHTML='<i style="font-size:11px;opacity:.6">Сообщение удалено</i>';el.classList.add('deleted');}
-  toast('Удалено для всех','g');
-}
-
-// CHANGE PASSWORD
-async function changePassword(){
-  const current=document.getElementById('pw-current').value;
-  const newPw=document.getElementById('pw-new').value;
-  const newPw2=document.getElementById('pw-new2').value;
-  if(!current||!newPw||!newPw2){toast('Заполните все поля','r');return;}
-  if(newPw.length<6){toast('Новый пароль минимум 6 символов','r');return;}
-  if(newPw!==newPw2){toast('Пароли не совпадают','r');return;}
-  // Verify current password by re-signing in
-  const{error:signErr}=await sb.auth.signInWithPassword({email:CP.email,password:current});
-  if(signErr){toast('Текущий пароль неверный','r');return;}
-  // Update password
-  const{error}=await sb.auth.updateUser({password:newPw});
-  if(error){toast('Ошибка смены пароля: '+error.message,'r');return;}
-  // Clear fields
-  document.getElementById('pw-current').value='';
-  document.getElementById('pw-new').value='';
-  document.getElementById('pw-new2').value='';
-  toast('Пароль успешно изменён!','g');
-}
 
 function openSelfVerify(){document.getElementById('self-verify-modal').classList.add('on');}
 async function confirmSelfVerify(){
@@ -2372,7 +2172,8 @@ async function submitSupportTicket(){
 
 async function loadMyTickets(){
   const ct=document.getElementById('my-tickets-list');if(!ct)return;
-  const{data:tickets}=await sb.from('support_tickets').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(10);
+  const{data:tickets,error}=await sb.from('support_tickets').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(10);
+  if(error){console.error('loadMyTickets:',error);return;}
   if(!tickets||!tickets.length){ct.innerHTML='';return;}
   ct.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Мои обращения</div>'+
     tickets.map(t=>`<div style="border:.5px solid var(--br);border-radius:var(--rm);padding:10px;margin-bottom:8px;cursor:pointer" onclick="viewTicket('${t.id}')">
