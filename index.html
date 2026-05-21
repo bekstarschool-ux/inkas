@@ -1955,6 +1955,12 @@ async function loadCommunityPosts(){
   const{data:posts}=await sb.from('community_posts').select('*,profiles(name,initials,cls,verified,staff_verified)').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(30);
   const inner=document.getElementById('cp-posts-inner');if(!inner)return;
   if(!posts||!posts.length){inner.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Записей пока нет</div>';return;}
+  // Load user's liked posts
+  const cpLikedSet=new Set();
+  if(posts.length){
+    const{data:myLikes}=await sb.from('community_post_likes').select('post_id').eq('user_id',CU.id).in('post_id',posts.map(p=>p.id));
+    (myLikes||[]).forEach(l=>cpLikedSet.add(l.post_id));
+  }
   inner.innerHTML=posts.map(p=>{
     const au=p.profiles;
     const canDel=canManage||p.author_id===CU.id;
@@ -1974,7 +1980,7 @@ async function loadCommunityPosts(){
       </div>
       <div class="ptxt">${esc(p.content)}</div>
       <div class="pfoot">
-        <div class="rxn" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div>
+        <div class="rxn${cpLikedSet.has(p.id)?' liked':''}" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -1992,7 +1998,22 @@ async function addCommunityPost(){
   toast('Запись опубликована!','g');
   loadCommunityPosts();
 }
-async function toggleCpLike(el,id,cur){el.classList.toggle('liked');const sp=el.querySelector('span');const n=el.classList.contains('liked')?cur+1:cur-1;sp.textContent=n;await sb.from('community_posts').update({likes:n}).eq('id',id);}
+async function toggleCpLike(el,postId,cur){
+  const sp=el.querySelector('span');
+  // Check DB state first
+  const{data:existing}=await sb.from('community_post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single();
+  const wasLiked=!!existing;
+  const newN=Math.max(0,wasLiked?cur-1:cur+1);
+  if(wasLiked){el.classList.remove('liked');}else{el.classList.add('liked');}
+  sp.textContent=newN;
+  if(wasLiked){
+    await sb.from('community_post_likes').delete().eq('post_id',postId).eq('user_id',CU.id);
+    await sb.from('community_posts').update({likes:newN}).eq('id',postId);
+  } else {
+    await sb.from('community_post_likes').insert({post_id:postId,user_id:CU.id});
+    await sb.from('community_posts').update({likes:newN}).eq('id',postId);
+  }
+}
 async function loadCommunityTopics(){
   if(!currentCommunity)return;
   const ct=document.getElementById('cp-content');
