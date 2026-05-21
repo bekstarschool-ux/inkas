@@ -1903,6 +1903,7 @@ async function openCommunityPage(id){
   currentCommunity=c;currentCpTab='posts';
   const cpav=document.getElementById('cp-av');cpav.className='av lg '+c.avatar_color;cpav.textContent=c.avatar_initials;
   document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i><span class="vtip">${c.verified==='gold'?'Публичная персона':'Верифицировано'}</span></span>`:'');
+  document.getElementById('cp-desc').textContent=(c.description||'')+' · ID: '+c.id.slice(0,8);
   document.getElementById('cp-desc').textContent=c.description||'';
   document.getElementById('cp-members').textContent=(c.members_count||0)+' участников';
   const cpc=document.getElementById('cp-cover');if(cpc)cpc.style.background=c.cover_color||'#3C3489';
@@ -1919,15 +1920,69 @@ async function checkMembership(){if(!currentCommunity||!CU)return false;const{da
 async function loadCommunityPosts(){
   if(!currentCommunity)return;
   const ct=document.getElementById('cp-content');
-  const isMember=await checkMembership();
-  let html=isMember?`<div class="pbox" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><div class="av sm ${CP.cls}">${CP.initials}</div><div class="pin" contenteditable="true" id="cp-pinput"></div></div><div style="display:flex;gap:8px"><button class="bp" onclick="addCommunityPost()" style="margin-left:auto">Опубликовать</button></div></div>`:'';
+  const myRole=await getCommunityRole();
+  const isMember=!!myRole;
+  const canPost=myRole==='owner'||myRole==='admin'||myRole==='editor';
+  const canManage=myRole==='owner'||myRole==='admin'||myRole==='editor';
+  let html='';
+  if(isMember&&canPost){
+    html=`<div class="pbox" style="margin-bottom:12px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+        <div class="av sm ${CP.cls}">${CP.initials}</div>
+        <div class="pin" contenteditable="true" id="cp-pinput"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--tx2);cursor:pointer">
+          <input type="checkbox" id="post-as-community" style="accent-color:var(--ac)">
+          От имени сообщества
+        </label>
+        <button class="bp" onclick="addCommunityPost()" style="margin-left:auto">Опубликовать</button>
+      </div>
+    </div>`;
+  } else if(isMember&&!canPost){
+    html=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);font-size:12px;color:var(--tx2);margin-bottom:12px"><i class="ti ti-lock"></i> Только администраторы могут писать</div>`;
+  }
   ct.innerHTML=html+'<div id="cp-posts-inner"><div style="padding:20px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div></div>';
-  const{data:posts}=await sb.from('community_posts').select('*,profiles(name,initials,cls,verified,staff_verified)').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(20);
+  const{data:posts}=await sb.from('community_posts').select('*,profiles(name,initials,cls,verified,staff_verified)').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(30);
   const inner=document.getElementById('cp-posts-inner');if(!inner)return;
   if(!posts||!posts.length){inner.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Записей пока нет</div>';return;}
-  inner.innerHTML=posts.map(p=>{const au=p.profiles;return `<div class="post" style="margin-bottom:12px"><div class="ph"><div class="av sm ${au?au.cls:'av-blue'}" style="position:relative;cursor:pointer" onclick="openUserProfile('${p.author_id}')">${au?au.initials:'?'}${vb(au?au.verified:'none',au?au.staff_verified:false,'sm')}</div><div style="flex:1"><div class="pa" style="cursor:pointer" onclick="openUserProfile('${p.author_id}')">${au?esc(au.name):'?'} ${vi(au?au.verified:'none',au?au.staff_verified:false)}</div><div class="pt">${ago(p.created_at)}</div></div></div><div class="ptxt">${esc(p.content)}</div><div class="pfoot"><div class="rxn" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div></div></div>`;}).join('');
+  inner.innerHTML=posts.map(p=>{
+    const au=p.profiles;
+    const canDel=canManage||p.author_id===CU.id;
+    // If posted as community, show community avatar
+    const avClass=p.posted_as_community?currentCommunity.avatar_color:(au?au.cls:'av-blue');
+    const avText=p.posted_as_community?currentCommunity.avatar_initials:(au?au.initials:'?');
+    const authorName=p.posted_as_community?esc(currentCommunity.name):(au?esc(au.name):'?');
+    const authorClick=p.posted_as_community?'':`onclick="openUserProfile('${p.author_id}')"`;
+    return `<div class="post" style="margin-bottom:12px" id="cpost-${p.id}">
+      <div class="ph">
+        <div class="av sm ${avClass}" style="cursor:${p.posted_as_community?'default':'pointer'}" ${authorClick}>${avText}</div>
+        <div style="flex:1">
+          <div class="pa" style="cursor:${p.posted_as_community?'default':'pointer'}" ${authorClick}>${authorName}${p.posted_as_community?` <span style="font-size:10px;background:var(--acl);color:var(--ac);padding:1px 5px;border-radius:4px">сообщество</span>`:''}</div>
+          <div class="pt">${ago(p.created_at)}</div>
+        </div>
+        ${canDel?`<button class="bsm" onclick="deleteCommunityPost('${p.id}')" style="color:var(--re);font-size:11px"><i class="ti ti-trash"></i></button>`:''}
+      </div>
+      <div class="ptxt">${esc(p.content)}</div>
+      <div class="pfoot">
+        <div class="rxn" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div>
+      </div>
+    </div>`;
+  }).join('');
 }
-async function addCommunityPost(){if(!currentCommunity)return;const inp=document.getElementById('cp-pinput');const text=(inp.textContent||inp.innerText||'').trim();if(!text)return;if(containsBadWord(text)){toast('Недопустимые слова','r');return;}await sb.from('community_posts').insert({community_id:currentCommunity.id,author_id:CU.id,content:text,likes:0});inp.textContent='';toast('Запись опубликована!','g');loadCommunityPosts();}
+
+async function addCommunityPost(){
+  if(!currentCommunity)return;
+  const inp=document.getElementById('cp-pinput');
+  const text=(inp.textContent||inp.innerText||'').trim();
+  if(!text)return;
+  if(containsBadWord(text)){toast('Недопустимые слова','r');return;}
+  const asCommunity=document.getElementById('post-as-community')?.checked||false;
+  await sb.from('community_posts').insert({community_id:currentCommunity.id,author_id:CU.id,content:text,likes:0,posted_as_community:asCommunity});
+  inp.textContent='';
+  toast('Запись опубликована!','g');
+  loadCommunityPosts();
+}
 async function toggleCpLike(el,id,cur){el.classList.toggle('liked');const sp=el.querySelector('span');const n=el.classList.contains('liked')?cur+1:cur-1;sp.textContent=n;await sb.from('community_posts').update({likes:n}).eq('id',id);}
 async function loadCommunityTopics(){
   if(!currentCommunity)return;
@@ -2160,6 +2215,44 @@ async function showCommonFriends(ids){
     <div style="font-size:13px;font-weight:500">${esc(p.name)} ${vi(p.verified,p.staff_verified)}</div>
   </div>`).join('');
   document.getElementById('gc-members-modal').classList.add('on');
+}
+
+
+// SWITCH TABS in user profile
+async function switchUserProfileTab(tab){
+  if(!viewingUser)return;
+  if(tab==='posts'){
+    loadUserPosts(viewingUser.id);
+  } else if(tab==='friends'){
+    loadUserFriends(viewingUser.id);
+  }
+}
+
+async function loadUserFriends(uid){
+  const ct=document.getElementById('user-posts-ct');
+  if(!ct)return;
+  ct.innerHTML='<div style="padding:20px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div>';
+  // Check privacy
+  if(viewingUser&&viewingUser.privacy_friends==='none'){
+    ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)"><i class="ti ti-lock" style="font-size:24px;display:block;margin-bottom:8px;opacity:.4"></i>Список друзей скрыт</div>';
+    return;
+  }
+  const{data:fdata}=await sb.from('friends').select('*').or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).eq('status','accepted');
+  if(!fdata||!fdata.length){
+    ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)">Нет друзей</div>';
+    return;
+  }
+  const ids=fdata.map(f=>f.sender_id===uid?f.receiver_id:f.sender_id);
+  const{data:profiles}=await sb.from('profiles').select('id,name,login,initials,cls,verified,staff_verified,last_seen,hide_online,role').in('id',ids);
+  ct.innerHTML=`<div class="card"><div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span>Друзья (${ids.length})</span><button class="bsm" onclick="switchUserProfileTab('posts')" style="font-size:11px"><i class="ti ti-arrow-left"></i>Назад к постам</button></div>`+
+    (profiles||[]).map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--br);cursor:pointer" onclick="openUserProfile('${p.id}')">
+      <div class="av sm ${p.cls}" style="position:relative">${p.initials}${vb(p.verified,p.staff_verified,'sm')}${(isOnline(p.last_seen)&&!(p.hide_online&&p.role&&p.role!=='user'))?'<div class="online-dot sm"></div>':''}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">${esc(p.name)} ${vi(p.verified,p.staff_verified)}</div>
+        <div style="font-size:11px;color:${(p.hide_online&&p.role&&p.role!=='user')?'var(--tx2)':isOnline(p.last_seen)?'#1D9E75':'var(--tx2)'}">${(p.hide_online&&p.role&&p.role!=='user')?'Администратор':isOnline(p.last_seen)?'В сети':ago(p.last_seen)}</div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--tx2)"></i>
+    </div>`).join('')+'</div>';
 }
 
 
