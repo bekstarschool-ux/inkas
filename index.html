@@ -1768,35 +1768,6 @@ function appendMsg(m,scroll=true){
   ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
 }
 
-function appendGroupMsg(m,scroll=true){
-  const ct=document.getElementById('chat-msgs');if(!ct)return;
-  const isOut=m.sender_id===CU.id;const p=m.profiles;
-  const t=new Date(m.created_at);const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
-  const div=document.createElement('div');
-  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
-  div.setAttribute('data-id',m.id);
-  div.innerHTML=(!isOut&&p?`<div style="font-size:10px;opacity:.7;margin-bottom:3px">${esc(p.name)}</div>`:'')+
-    (m.sticker?m.sticker:esc(m.content))+`<div class="mt2">${time}</div><div class="msg-actions"><button class="msg-act-btn" onclick="deleteGroupMsg('${m.id}')" title="Удалить"><i class="ti ti-trash"></i></button></div>`;
-  ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
-}
-
-
-init();
-</script>
-</body>
-</html>async function openChat(partnerId){
-  document.querySelectorAll('.cli').forEach(el=>el.classList.remove('on'));
-  const cli=document.getElementById('cli-'+partnerId);if(cli)cli.classList.add('on');
-  const{data:partner}=await sb.from('profiles').select('*').eq('id',partnerId).single();if(!partner)return;
-  activeChatUser=partner;activeChatType='dm';
-  renderChatWindow(partner.name,partner.cls,partner.initials,partner.verified,partner.staff_verified,false);
-  await loadMessages(partnerId);
-  subscribeDM(partnerId);
-  // Mark as read
-  await sb.from('messages').update({read:true,read_at:new Date().toISOString()}).eq('receiver_id',CU.id).eq('sender_id',partnerId).eq('read',false);
-  loadUnread();
-}
-
 function subscribeDM(partnerId){
   if(chatSub){chatSub.unsubscribe();chatSub=null;}
   chatSub=sb.channel('dm-'+CU.id+'-'+partnerId)
