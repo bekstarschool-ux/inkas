@@ -1382,7 +1382,8 @@ async function createCommunity(){
   await sb.from('community_members').insert({community_id:data.id,user_id:CU.id,role:'owner'});
   closeMod('create-community-modal');toast('Сообщество создано!','g');loadCommunities();
 }
-function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
+function openCommunitySettings(){if(!currentCommunity)return;
+  setTimeout(()=>loadCommunityVerifyStatus(),100);document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
 async function saveCommunitySettings(){if(!currentCommunity)return;const name=document.getElementById('cs-name').value.trim();if(!name){toast('Введите название','r');return;}const desc=document.getElementById('cs-desc').value.trim();const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();await sb.from('communities').update({name,description:desc,avatar_color:selCsColor||currentCommunity.avatar_color,avatar_initials:initials}).eq('id',currentCommunity.id);closeMod('community-settings-modal');toast('Обновлено!','g');openCommunityPage(currentCommunity.id);}
 async function deleteCommunity(){if(!currentCommunity)return;if(!confirm('Удалить сообщество?'))return;await sb.from('communities').delete().eq('id',currentCommunity.id);closeMod('community-settings-modal');currentCommunity=null;toast('Сообщество удалено','r');showSection('communities');}
 
@@ -1392,7 +1393,7 @@ async function renderAdmin(){
   const{data:profiles}=await sb.from('profiles').select('*').order('created_at');
   const{data:reports}=await sb.from('reports').select('*,reporter:reporter_id(name,login),target:target_id(name,login)').order('created_at',{ascending:false});
   AP=profiles||[];AR=reports||[];updStats();
-  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);
+  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);else if(CT==='support')loadAdminTickets(body);
 }
 function updStats(){
   document.getElementById('s-u').textContent=AP.filter(u=>!u.is_deleted).length;
@@ -1744,6 +1745,182 @@ async function cancelVerifyReq(id){
   toast('Заявка отозвана','g');
   await renderVerifyStatus();
 }
+
+function navigate(path, pushState=true){
+  if(pushState) window.location.hash = path;
+}
+
+function getOnlineStatus(p){
+  if(p.hide_online&&p.role!=='user')return{online:false,text:'Администратор'};
+  const online=isOnline(p.last_seen);
+  return{online,text:online?'В сети':'Был(а) '+ago(p.last_seen)};
+}
+
+
+async function toggleHideOnline(checkbox){
+  if(!checkbox)return;
+  const val=checkbox.checked;
+  const slider=document.getElementById('hide-online-slider');
+  if(slider)slider.style.background=val?'var(--ac)':'var(--br2)';
+  const{error}=await sb.from('profiles').update({hide_online:val}).eq('id',CU.id);
+  if(error){toast('Ошибка сохранения','r');if(checkbox)checkbox.checked=!val;return;}
+  CP=await loadP(CU.id);
+  toast(val?'Онлайн скрыт':'Онлайн снова виден','g');
+}
+
+async function loadCommunityVerifyStatus(){
+  const ct=document.getElementById('community-verify-status');
+  if(!ct||!currentCommunity)return;
+  if(currentCommunity.verified&&currentCommunity.verified!=='none'){
+    const color=currentCommunity.verified==='gold'?'#BA7517':'#185FA5';
+    const vname=currentCommunity.verified==='gold'?'Золотая':'Синяя';
+    ct.innerHTML='<div style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg2);border-radius:var(--rm)"><i class="ti ti-rosette-discount-check" style="font-size:20px;color:'+color+'"></i><div style="font-size:13px;font-weight:500">Верификация активна · '+vname+'</div></div>';
+    return;
+  }
+  const{data:reqs}=await sb.from('community_verify_requests').select('*').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(1);
+  const req=reqs&&reqs.length?reqs[0]:null;
+  const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};
+  if(req){
+    ct.innerHTML='<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);margin-bottom:4px"><div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:4px">ЗАЯВКА: '+esc(req.reason)+'</div><span class="ch pending">'+stMap[req.status]+'</span></div>'
+      +'<button class="bsm" style="font-size:11px;color:var(--re);margin-top:4px" onclick="cancelCommunityVerifyReq(this.dataset.id)" data-id="'+req.id+'"><i class="ti ti-x"></i>Отозвать</button>';
+  } else {
+    ct.innerHTML='<div style="font-size:12px;color:var(--tx2);margin-bottom:8px">Подайте заявку на верификацию.</div>'
+      +'<button class="bp" onclick="openCommunityVerifyReq()" style="font-size:12px"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button>';
+  }
+}
+
+function openCommunityVerifyReq(){
+  const el=document.getElementById('cvr-reason');if(el)el.value='';
+  const modal=document.getElementById('community-verify-modal');if(modal)modal.classList.add('on');
+}
+
+async function submitCommunityVerifyRequest(){
+  if(!currentCommunity)return;
+  const typeEl=document.getElementById('cvr-type');
+  const reasonEl=document.getElementById('cvr-reason');
+  const type=typeEl?typeEl.value:'blue';
+  const reason=reasonEl?reasonEl.value.trim():'';
+  if(!reason){toast('Укажите причину','r');return;}
+  await sb.from('community_verify_requests').delete().eq('community_id',currentCommunity.id).eq('status','rejected');
+  const{error}=await sb.from('community_verify_requests').insert({community_id:currentCommunity.id,user_id:CU.id,reason:type+': '+reason,status:'pending'});
+  if(error){toast('Ошибка: '+error.message,'r');return;}
+  closeMod('community-verify-modal');
+  toast('Заявка отправлена!','g');
+  loadCommunityVerifyStatus();
+}
+
+async function cancelCommunityVerifyReq(id){
+  await sb.from('community_verify_requests').delete().eq('id',id);
+  toast('Заявка отозвана','g');
+  loadCommunityVerifyStatus();
+}
+
+async function approveCommunityVerify(reqId,communityId,type){
+  await sb.from('communities').update({verified:type}).eq('id',communityId);
+  await sb.from('community_verify_requests').update({status:'approved'}).eq('id',reqId);
+  renderAdmin();toast('Верификация выдана!','g');
+}
+
+async function rejectCommunityVerify(reqId){
+  await sb.from('community_verify_requests').update({status:'rejected'}).eq('id',reqId);
+  renderAdmin();toast('Заявка отклонена','r');
+}
+
+async function adminDeleteCommunity(id,name){
+  if(!confirm('Удалить «'+name+'»? Необратимо.'))return;
+  await sb.from('communities').delete().eq('id',id);
+  renderAdmin();toast('Удалено','r');
+}
+
+let currentTicketId=null;
+
+function openSupportTicket(){
+  const s=document.getElementById('ticket-subject');if(s)s.value='';
+  const m=document.getElementById('ticket-message');if(m)m.value='';
+  const modal=document.getElementById('support-ticket-modal');if(modal)modal.classList.add('on');
+}
+
+async function submitSupportTicket(){
+  const subject=(document.getElementById('ticket-subject')||{}).value||'';
+  const message=(document.getElementById('ticket-message')||{}).value||'';
+  if(!subject.trim()||!message.trim()){toast('Заполните все поля','r');return;}
+  const{error}=await sb.from('support_tickets').insert({user_id:CU.id,subject:subject.trim(),message:message.trim(),status:'open'});
+  if(error){toast('Ошибка отправки','r');return;}
+  closeMod('support-ticket-modal');toast('Обращение отправлено!','g');
+  loadMyTickets();
+}
+
+async function loadMyTickets(){
+  const ct=document.getElementById('my-tickets-list');if(!ct)return;
+  const{data:tickets}=await sb.from('support_tickets').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(10);
+  if(!tickets||!tickets.length){ct.innerHTML='';return;}
+  ct.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:8px">МОИ ОБРАЩЕНИЯ</div>'+
+    tickets.map(t=>'<div style="border:.5px solid var(--br);border-radius:var(--rm);padding:10px;margin-bottom:8px">'
+      +'<div style="font-size:13px;font-weight:500">'+esc(t.subject)+'</div>'
+      +'<div style="font-size:11px;color:var(--tx2);margin-top:2px">'+ago(t.created_at)+'</div>'
+      +(t.admin_reply?'<div style="margin-top:6px;font-size:12px;color:var(--ac);background:var(--acl);padding:6px 8px;border-radius:var(--rm)">Ответ: '+esc(t.admin_reply)+'</div>':'')
+      +'</div>').join('');
+}
+
+async function loadAdminTickets(body){
+  const{data:tickets}=await sb.from('support_tickets').select('*,profiles(name,login,initials,cls)').order('created_at',{ascending:false}).limit(50);
+  if(!tickets||!tickets.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Нет обращений</div>';return;}
+  const rows=tickets.map(t=>{
+    const p=t.profiles;
+    const replyBtn=t.status==='open'?'<button class="ba bl2" data-id="'+t.id+'" data-subj="'+ea(t.subject)+'" data-msg="'+ea(t.message)+'" onclick="openTicketReply(this.dataset.id,this.dataset.subj,this.dataset.msg)"><i class="ti ti-message-reply"></i>Ответить</button>':'';
+    const closeBtn='<button class="ba gh" data-id="'+t.id+'" onclick="closeTicket(this.dataset.id)"><i class="ti ti-check"></i>Закрыть</button>';
+    return '<div class="ar'+(t.status==='open'?' rpt':'')+'"><div class="av md '+(p?p.cls:'av-blue')+'">'+(p?p.initials:'?')+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">'+esc(t.subject)+'</div>'
+      +'<div style="font-size:11px;color:var(--tx2)">@'+(p?p.login:'')+' · '+ago(t.created_at)+'</div>'
+      +'<div style="font-size:12px;margin-top:3px">'+esc((t.message||'').slice(0,100))+'</div>'
+      +(t.admin_reply?'<div style="font-size:11px;color:var(--ac);margin-top:2px">Ответ: '+esc(t.admin_reply.slice(0,60))+'</div>':'')
+      +'</div><div class="aac">'+replyBtn+closeBtn+'</div></div>';
+  });
+  body.innerHTML=rows.join('');
+}
+
+function openTicketReply(id,subject,message){
+  currentTicketId=id;
+  const title=document.getElementById('trm-title');if(title)title.textContent='Ответ: '+subject;
+  const body=document.getElementById('trm-body');if(body)body.textContent=message;
+  const txt=document.getElementById('ticket-reply-text');if(txt){txt.style.display='block';txt.value='';}
+  const modal=document.getElementById('ticket-reply-modal');if(modal)modal.classList.add('on');
+}
+
+async function submitTicketReply(){
+  const txt=document.getElementById('ticket-reply-text');
+  const reply=txt?txt.value.trim():'';
+  if(!reply){toast('Введите ответ','r');return;}
+  await sb.from('support_tickets').update({admin_reply:reply,status:'answered',updated_at:new Date().toISOString()}).eq('id',currentTicketId);
+  closeMod('ticket-reply-modal');toast('Ответ отправлен!','g');renderAdmin();
+}
+
+async function closeTicket(id){
+  await sb.from('support_tickets').update({status:'closed'}).eq('id',id);
+  renderAdmin();toast('Закрыто','g');
+}
+
+async function setCommunityMemberRole(memberId,newRole){
+  await sb.from('community_members').update({permissions:newRole}).eq('id',memberId);
+  toast('Роль обновлена','g');
+}
+
+async function kickCommunityMember(memberId){
+  if(!confirm('Исключить участника?'))return;
+  await sb.from('community_members').delete().eq('id',memberId);
+  toast('Участник исключён','r');
+  loadCommunityMembers();
+}
+
+function initHideOnlineToggle(){
+  const hoSection=document.getElementById('hide-online-section');
+  const hoToggle=document.getElementById('hide-online-toggle');
+  const hoSlider=document.getElementById('hide-online-slider');
+  const adminRoles=['mod','admin','super','support'];
+  if(hoSection)hoSection.style.display=adminRoles.includes(CP.role)?'block':'none';
+  if(hoToggle){hoToggle.checked=CP.hide_online||false;if(hoSlider)hoSlider.style.background=(CP.hide_online?'var(--ac)':'var(--br2)');}
+}
+
 init();
 </script>
 </body>
