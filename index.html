@@ -1712,28 +1712,9 @@ async function reportBlock(){if(RPT.targetId)await sb.from('profiles').update({b
 async function verifyCom(id,type){await sb.from('communities').update({verified:type}).eq('id',id);renderAdmin();toast('Галочка сообществу','g');}
 async function revokeCom(id){await sb.from('communities').update({verified:'none'}).eq('id',id);renderAdmin();toast('Галочка отозвана','g');}
 
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function ea(s){return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
-function ago(d){if(!d)return '';const s=(Date.now()-new Date(d))/1000;if(s<60)return'только что';if(s<3600)return Math.floor(s/60)+' мин назад';if(s<86400)return Math.floor(s/3600)+' ч назад';return Math.floor(s/86400)+' дн назад'}
-function toast(m,t){const el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' on';setTimeout(()=>el.classList.remove('on'),2800)}
 
-async function sendMsg(){
-  const inp=document.getElementById('chat-inp');if(!inp)return;
-  const text=inp.value.trim();if(!text)return;
-  if(containsBadWord(text)){toast('Недопустимые слова','r');return;}
-  inp.value='';
-  if(activeChatType==='dm'&&activeChatUser){
-    // Check privacy
-    if(activeChatUser.privacy_messages==='none'){toast('Этот пользователь не принимает сообщения','r');return;}
-    await sb.from('messages').insert({sender_id:CU.id,receiver_id:activeChatUser.id,content:text});
-    if(activeChatUser.id!==CU.id)await createNotif(activeChatUser.id,'message',CP.name+': '+text.slice(0,50));
-  } else if(activeChatType==='saved'){
-    await sb.from('messages').insert({sender_id:CU.id,receiver_id:CU.id,content:text});
-  } else if(activeChatType==='group'&&activeGroupChat){
-    await sb.from('group_messages').insert({chat_id:activeGroupChat.id,sender_id:CU.id,content:text});
-  }
-  loadChatList();
-}
+
+
 
 function appendGroupMsg(m,scroll=true){
   const ct=document.getElementById('chat-msgs');if(!ct)return;
@@ -1779,5 +1760,14 @@ function subscribeDM(partnerId){
     }).subscribe();
 }
 
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function ea(s){return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
+function ago(d){if(!d)return '';const s=(Date.now()-new Date(d))/1000;if(s<60)return'только что';if(s<3600)return Math.floor(s/60)+' мин назад';if(s<86400)return Math.floor(s/3600)+' ч назад';return Math.floor(s/86400)+' дн назад'}
+function toast(m,t){const el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' on';setTimeout(()=>el.classList.remove('on'),2800)}
 
+init();
 
+init();
+</script>
+</body>
+</html>
