@@ -1717,6 +1717,70 @@ function ea(s){return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;')
 function ago(d){if(!d)return '';const s=(Date.now()-new Date(d))/1000;if(s<60)return'только что';if(s<3600)return Math.floor(s/60)+' мин назад';if(s<86400)return Math.floor(s/3600)+' ч назад';return Math.floor(s/86400)+' дн назад'}
 function toast(m,t){const el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' on';setTimeout(()=>el.classList.remove('on'),2800)}
 
+async function sendMsg(){
+  const inp=document.getElementById('chat-inp');if(!inp)return;
+  const text=inp.value.trim();if(!text)return;
+  if(containsBadWord(text)){toast('Недопустимые слова','r');return;}
+  inp.value='';
+  if(activeChatType==='dm'&&activeChatUser){
+    // Check privacy
+    if(activeChatUser.privacy_messages==='none'){toast('Этот пользователь не принимает сообщения','r');return;}
+    await sb.from('messages').insert({sender_id:CU.id,receiver_id:activeChatUser.id,content:text});
+    if(activeChatUser.id!==CU.id)await createNotif(activeChatUser.id,'message',CP.name+': '+text.slice(0,50));
+  } else if(activeChatType==='saved'){
+    await sb.from('messages').insert({sender_id:CU.id,receiver_id:CU.id,content:text});
+  } else if(activeChatType==='group'&&activeGroupChat){
+    await sb.from('group_messages').insert({chat_id:activeGroupChat.id,sender_id:CU.id,content:text});
+  }
+  loadChatList();
+}
+
+function appendGroupMsg(m,scroll=true){
+  const ct=document.getElementById('chat-msgs');if(!ct)return;
+  const isOut=m.sender_id===CU.id;const p=m.profiles;
+  const t=new Date(m.created_at);const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
+  const div=document.createElement('div');
+  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
+  div.setAttribute('data-id',m.id);
+  div.innerHTML=(!isOut&&p?`<div style="font-size:10px;opacity:.7;margin-bottom:3px">${esc(p.name)}</div>`:'')+
+    (m.sticker?m.sticker:esc(m.content))+`<div class="mt2">${time}</div><div class="msg-actions"><button class="msg-act-btn" onclick="deleteGroupMsg('${m.id}')" title="Удалить"><i class="ti ti-trash"></i></button></div>`;
+  ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
+}
+
+
+async function loadGroupMessages(gcId){
+  const ct=document.getElementById('chat-msgs');if(!ct)return;
+  ct.innerHTML='<div style="text-align:center;padding:20px"><div class="sp2" style="margin:0 auto"></div></div>';
+  const{data:msgs}=await sb.from('group_messages').select('*,profiles(name,initials,cls)').eq('chat_id',gcId).order('created_at',{ascending:true}).limit(50);
+  if(!msgs||!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">Начните общение!</div>';return;}
+  ct.innerHTML='';msgs.forEach(m=>appendGroupMsg(m,false));ct.scrollTop=ct.scrollHeight;
+}
+
+function appendMsg(m,scroll=true){
+  const ct=document.getElementById('chat-msgs');if(!ct)return;
+  const isOut=m.sender_id===CU.id;
+  const t=new Date(m.created_at);const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
+  const readInfo=isOut&&m.read_at?`<i class="ti ti-checks read-tick" style="color:#B5D4F4" title="Прочитано ${new Date(m.read_at).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}"></i>`:'';
+  const div=document.createElement('div');
+  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
+  div.setAttribute('data-id',m.id);
+  div.innerHTML=(m.sticker?m.sticker:esc(m.content))+`<div class="mt2">${time} ${isOut?readInfo:''}</div><div class="msg-actions"><button class="msg-act-btn" onclick="deleteMsg('${m.id}','${isOut}')" title="Удалить"><i class="ti ti-trash"></i></button></div>`;
+  ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
+}
+
+function appendGroupMsg(m,scroll=true){
+  const ct=document.getElementById('chat-msgs');if(!ct)return;
+  const isOut=m.sender_id===CU.id;const p=m.profiles;
+  const t=new Date(m.created_at);const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
+  const div=document.createElement('div');
+  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
+  div.setAttribute('data-id',m.id);
+  div.innerHTML=(!isOut&&p?`<div style="font-size:10px;opacity:.7;margin-bottom:3px">${esc(p.name)}</div>`:'')+
+    (m.sticker?m.sticker:esc(m.content))+`<div class="mt2">${time}</div><div class="msg-actions"><button class="msg-act-btn" onclick="deleteGroupMsg('${m.id}')" title="Удалить"><i class="ti ti-trash"></i></button></div>`;
+  ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
+}
+
+
 init();
 </script>
 </body>
