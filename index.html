@@ -695,12 +695,13 @@ function isOnline(lastSeen){if(!lastSeen)return false;return (Date.now()-new Dat
 function rc(role){return `<span class="rb ${RC[role]}"><i class="ti ${RI[role]}" style="font-size:9px"></i>${RL[role]}</span>`;}
 function vi(v,sv){
   let b='';
-  if(v==='blue')b+=`<i class="ti ti-rosette-discount-check" style="font-size:13px;color:#185FA5"></i>`;
-  else if(v==='gold')b+=`<i class="ti ti-rosette-discount-check" style="font-size:13px;color:#BA7517"></i>`;
-  else if(v==='violet')b+=`<i class="ti ti-rosette-discount-check" style="font-size:13px;color:#6B21A8"></i>`;
-  if(sv)b+=`<i class="ti ti-rosette-discount-check" style="font-size:13px;color:#6B21A8"></i>`;
+  if(v==='blue')b+='<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:13px;color:#185FA5"></i><span class="vtip">Верифицированный аккаунт</span></span>';
+  else if(v==='gold')b+='<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:13px;color:#BA7517"></i><span class="vtip">Публичная персона</span></span>';
+  else if(v==='violet')b+='<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:13px;color:#6B21A8"></i><span class="vtip">Публичная персона</span></span>';
+  if(sv&&(!v||v==='none'))b+='<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:13px;color:#6B21A8"></i><span class="vtip">Команда Инкас</span></span>';
   return b;
 }
+
 function vb(v,sv,sz=''){
   if(v&&v!=='none'){const c=v==='gold'?'gold':v==='violet'?'violet':'blue';return `<div class="vb ${c}${sz?' '+sz:''}"><i class="ti ti-check"></i></div>`;}
   if(sv)return `<div class="vb violet${sz?' '+sz:''}"><i class="ti ti-check"></i></div>`;
@@ -1194,17 +1195,20 @@ async function sendSticker(s){const p=document.getElementById('spick');if(p)p.cl
 async function loadMessages(partnerId,isSaved=false){
   const ct=document.getElementById('chat-msgs');if(!ct)return;
   ct.innerHTML='<div style="text-align:center;padding:20px"><div class="sp2" style="margin:0 auto"></div></div>';
-  let query;
-  if(isSaved){query=sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',CU.id);}
-  else{query=sb.from('messages').select('*').or(`and(sender_id.eq.${CU.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${CU.id})`).neq('sender_id',CU.id+'_saved');}
-  const{data:msgs}=await query.order('created_at',{ascending:true}).limit(50);
-  if(!msgs||!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">'+(isSaved?'Нет сохранённых сообщений':'Начните диалог!')+'</div>';return;}
-  ct.innerHTML='';
-  for(const m of msgs){
-    const isOut=m.sender_id===CU.id;
-    const deleted=(isOut&&m.deleted_by_sender)||(!isOut&&m.deleted_by_receiver);
-    if(!deleted)appendMsg(m,false);
+  let msgs=[];
+  if(isSaved){
+    const{data}=await sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',CU.id).order('created_at',{ascending:true}).limit(50);
+    msgs=data||[];
+  } else {
+    const[{data:sent},{data:recv}]=await Promise.all([
+      sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',partnerId).order('created_at',{ascending:true}).limit(50),
+      sb.from('messages').select('*').eq('sender_id',partnerId).eq('receiver_id',CU.id).order('created_at',{ascending:true}).limit(50)
+    ]);
+    msgs=[...(sent||[]),...(recv||[])].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).slice(-50);
   }
+  if(!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">'+(isSaved?'Нет сохранённых':'Начните диалог!')+'</div>';return;}
+  ct.innerHTML='';
+  msgs.forEach(m=>{const isOut=m.sender_id===CU.id;const del=(isOut&&m.deleted_by_sender)||(!isOut&&m.deleted_by_receiver);if(!del)appendMsg(m,false);});
   ct.scrollTop=ct.scrollHeight;
 }
 
@@ -1414,13 +1418,32 @@ function renderStaff(body){
   body.innerHTML=staff.map(u=>`<div class="ar"><div class="av md ${u.cls}">${u.initials}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">@${u.login} — ${esc(u.name)}</div><div style="margin-top:4px">${rc(u.role)}</div></div><div class="aac">${P.manageStaff&&u.id!==CU.id?`<button class="ba pu" onclick="openRM('${u.id}','${ea(u.name)}','${u.role}')"><i class="ti ti-edit"></i></button><button class="ba gh" onclick="remRole('${u.id}')"><i class="ti ti-x"></i></button>`:'<span style="font-size:11px;color:var(--tx2)">'+(u.id===CU.id?'Вы':'')+'</span>'}</div></div>`).join('');
 }
 async function renderCommAdmin(body){
-  const{data:comms}=await sb.from('communities').select('*').order('created_at',{ascending:false});const P=PERMS[CP.role]||{};
+  const{data:comms}=await sb.from('communities').select('*').order('created_at',{ascending:false});
+  const P=PERMS[CP.role]||{};
   if(!comms||!comms.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Сообществ нет</div>';return;}
-  body.innerHTML=comms.map(c=>{let acts='';if(P.verifyUsers){if(!c.verified||c.verified==='none')acts=`<button class="ba bl2" onclick="verifyCom('${c.id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="verifyCom('${c.id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button>`;else acts=`<button class="ba gh" onclick="revokeCom('${c.id}')"><i class="ti ti-x"></i>Отозвать</button>`;}return `<div class="ar"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.members_count||0} участников</div></div><div class="aac">${acts}</div></div>`;}).join('');
+  body.innerHTML='';
+  comms.forEach(c=>{
+    const div=document.createElement('div');div.className='ar';
+    div.innerHTML='<div class="av md '+c.avatar_color+'">'+c.avatar_initials+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">'+esc(c.name)+(c.verified&&c.verified!=='none'?'<span class="vtooltip" style="margin-left:4px"><i class="ti ti-rosette-discount-check" style="font-size:12px;color:'+(c.verified==='gold'?'#BA7517':'#185FA5')+'"></i><span class="vtip">'+(c.verified==='gold'?'Золотая':'Синяя')+'</span></span>':'')+'</div>'
+      +'<div style="font-size:11px;color:var(--tx2)">'+c.members_count+' участников · '+ago(c.created_at)+'</div></div>'
+      +'<div class="aac" id="cma-'+c.id+'"></div>';
+    body.appendChild(div);
+    const aac=document.getElementById('cma-'+c.id);
+    if(P.verifyUsers){
+      if(!c.verified||c.verified==='none'){
+        const b1=document.createElement('button');b1.className='ba bl2';b1.innerHTML='<i class="ti ti-rosette-discount-check"></i>Синяя';b1.onclick=()=>verifyCom(c.id,'blue');aac.appendChild(b1);
+        const b2=document.createElement('button');b2.className='ba go';b2.innerHTML='<i class="ti ti-rosette-discount-check"></i>Золотая';b2.onclick=()=>verifyCom(c.id,'gold');aac.appendChild(b2);
+      } else {
+        const b3=document.createElement('button');b3.className='ba gh';b3.innerHTML='<i class="ti ti-x"></i>Отозвать';b3.onclick=()=>revokeCom(c.id);aac.appendChild(b3);
+      }
+    }
+    if(P.manageStaff){
+      const db=document.createElement('button');db.className='ba da';db.style.marginLeft='4px';db.innerHTML='<i class="ti ti-trash"></i>Удалить';db.onclick=()=>adminDeleteCommunity(c.id,c.name);aac.appendChild(db);
+    }
+  });
 }
-function swTab(t,el){CT=t;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));el.classList.add('on');renderAdmin();}
-function closeMod(id){document.getElementById(id).classList.remove('on');}
-function openBM(id,name){BT=id;document.getElementById('bm-t').textContent='Заблокировать: '+name;document.getElementById('block-modal').classList.add('on');}
+
 async function confirmBlock(){const r=RSN[document.getElementById('b-reason').value],d=RDN[document.getElementById('b-dur').value];await sb.from('profiles').update({blocked:true,block_reason:r,block_duration:d,verified:'none',staff_verified:false}).eq('id',BT);await createNotif(BT,'system','Ваш аккаунт заблокирован: '+r+(d?' ('+d+')':''));closeMod('block-modal');renderAdmin();toast('Заблокировано','r');}
 async function unblockU(id){await sb.from('profiles').update({blocked:false,block_reason:'',block_duration:''}).eq('id',id);await createNotif(id,'system','Ваш аккаунт разблокирован');renderAdmin();toast('Разблокировано','g');}
 async function verifyU(id,type){await sb.from('profiles').update({verified:type,staff_verified:false}).eq('id',id);if(id===CU.id){CP=await loadP(id);updateUI();}await createNotif(id,'system','Вам выдана верификация: '+(type==='gold'?'золотая':'синяя')+' галочка');renderAdmin();toast((type==='gold'?'Золотая':'Синяя')+' галочка выдана','g');}
