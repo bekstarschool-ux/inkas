@@ -329,6 +329,7 @@
               <div style="display:flex;gap:22px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--br)">
                 <div style="text-align:center;cursor:pointer" onclick="switchUserProfileTab('posts')"><div style="font-size:15px;font-weight:600" id="up-posts">0</div><div style="font-size:11px;color:var(--tx2)">Постов</div></div>
                 <div style="text-align:center;cursor:pointer" onclick="switchUserProfileTab('friends')"><div style="font-size:15px;font-weight:600" id="up-friends-count">—</div><div style="font-size:11px;color:var(--tx2)">Друзей</div></div>
+                <div style="text-align:center;cursor:pointer"><div style="font-size:15px;font-weight:600" id="up-followers-count">0</div><div style="font-size:11px;color:var(--tx2)">Подписчиков</div></div>
               </div>
             </div>
           </div>
@@ -1169,8 +1170,12 @@ async function openUserProfile(id, updateHash=true){
   loadUserPosts(p.id);
   updateFriendBtn(p.id);
   updateBlockBtn(p.id);
-  // Load friends count + common friends
+  // Load friends count + common friends + followers
   loadUserFriendsCount(p.id);
+  loadFollowersCount(p.id).then(count=>{
+    const el=document.getElementById('up-followers-count');
+    if(el){el.textContent=count;el.onclick=()=>showFollowers(p.id,p.name);}
+  });
 }
 
 async function updateBlockBtn(uid){
@@ -1200,8 +1205,12 @@ async function toggleFriend(){
   const{data:bl}=await sb.from('user_blocks').select('id').eq('blocker_id',viewingUser.id).eq('blocked_id',CU.id).single();
   if(bl){toast('Нельзя отправить заявку','r');return;}
   await sb.from('friends').insert({sender_id:CU.id,receiver_id:viewingUser.id,status:'pending'});
+  // Become follower when sending friend request
+  try{await sb.from('followers').insert({follower_id:CU.id,following_id:viewingUser.id});}catch(e){}
+  const{data:fp}=await sb.from('profiles').select('followers_count').eq('id',viewingUser.id).single();
+  if(fp)await sb.from('profiles').update({followers_count:(fp.followers_count||0)+1}).eq('id',viewingUser.id);
   await createNotif(viewingUser.id,'friend_request',CP.name+' хочет добавить вас в друзья');
-  toast('Заявка отправлена!','g');updateFriendBtn(viewingUser.id);loadFriendRequests();
+  toast('Заявка отправлена!','г');updateFriendBtn(viewingUser.id);loadFriendRequests();
 }
 
 // FRIENDS
@@ -1251,7 +1260,20 @@ function friendsTab(tab,el){document.querySelectorAll('#section-friends .tab').f
 async function acceptFriendReq(id,fromId,fromName){await sb.from('friends').update({status:'accepted'}).eq('id',id);await createNotif(fromId,'friend_accepted',CP.name+' принял(а) вашу заявку в друзья');toast('Принято!','g');loadFriendRequests();loadFriendsSection('incoming');}
 async function declineFriendReq(id){await sb.from('friends').delete().eq('id',id);toast('Отклонено','g');loadFriendsSection('incoming');}
 async function cancelFriendReq(id){await sb.from('friends').delete().eq('id',id);toast('Отменено','g');loadFriendsSection('outgoing');}
-async function removeFriend(id){await sb.from('friends').delete().eq('id',id);toast('Удалено из друзей','g');loadFriendsSection('friends');}
+async function removeFriend(id){
+  // Get the friend's ID before deleting
+  const{data:fr}=await sb.from('friends').select('*').eq('id',id).single();
+  await sb.from('friends').delete().eq('id',id);
+  // Become follower of the removed friend
+  if(fr){
+    const otherId=fr.sender_id===CU.id?fr.receiver_id:fr.sender_id;
+    try{await sb.from('followers').insert({follower_id:CU.id,following_id:otherId});}catch(e){}
+    const{data:fp}=await sb.from('profiles').select('followers_count').eq('id',otherId).single();
+    if(fp)await sb.from('profiles').update({followers_count:(fp.followers_count||0)+1}).eq('id',otherId);
+  }
+  toast('Удалено из друзей','g');
+  loadFriendsSection('friends');
+}
 async function startChat(id){
   _routeHandling=true;
   showSection('messages', false);
@@ -1433,337 +1455,99 @@ async function loadChatList(){
     const{data:gcs}=await sb.from('group_chats').select('*').in('id',gcIds);
     gcHtml=(gcs||[]).map(gc=>`<div class="cli" id="cli-gc-${gc.id}" onclick="openGroupChat('${gc.id}','${ea(gc.name)}','${gc.avatar_color}')"><div class="av sm ${gc.avatar_color}">${gc.name[0].toUpperCase()}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(gc.name)}</div><div style="font-size:11px;color:var(--tx2)">Группа</div></div></div>`).join('');
   }
-  // DM chats
+  // DM chats - get all messages to find partners
   const{data:sentMsgs}=await sb.from('messages').select('receiver_id,content,created_at').eq('sender_id',CU.id).neq('receiver_id',CU.id).order('created_at',{ascending:false});
   const{data:recvMsgs}=await sb.from('messages').select('sender_id,content,created_at').eq('receiver_id',CU.id).neq('sender_id',CU.id).order('created_at',{ascending:false});
+  // Merge and sort by latest
+  const allMsgs=[...(sentMsgs||[]).map(m=>({partnerId:m.receiver_id,content:m.content,ts:new Date(m.created_at)})),...(recvMsgs||[]).map(m=>({partnerId:m.sender_id,content:m.content,ts:new Date(m.created_at)}))];
+  allMsgs.sort((a,b)=>b.ts-a.ts);
   const partnerMap=new Map();
-  for(const m of(sentMsgs||[])){if(!partnerMap.has(m.receiver_id))partnerMap.set(m.receiver_id,m.content);}
-  for(const m of(recvMsgs||[])){if(!partnerMap.has(m.sender_id))partnerMap.set(m.sender_id,m.content);}
+  for(const m of allMsgs){if(!partnerMap.has(m.partnerId))partnerMap.set(m.partnerId,m.content);}
   if(!partnerMap.size){ct.innerHTML=savedHtml+gcHtml+'<div style="padding:20px;text-align:center;font-size:13px;color:var(--tx2)">Нет личных сообщений</div>';return;}
-  const{data:partners}=await sb.from('profiles').select('id,name,initials,cls,verified,staff_verified,last_seen,hide_online,role').in('id',[...partnerMap.keys()]);
-  const dmHtml=(partners||[]).map(p=>`<div class="cli" id="cli-${p.id}" onclick="openChat('${p.id}')"><div class="av sm ${p.cls}" style="position:relative">${p.initials}${vb(p.verified,p.staff_verified,'sm')}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(p.name)}</div><div style="font-size:11px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((partnerMap.get(p.id)||'').slice(0,40))}</div></div></div>`).join('');
+  const partnerIds=[...partnerMap.keys()];
+  // Get unread
+  const{data:unreadMsgs}=await sb.from('messages').select('sender_id').eq('receiver_id',CU.id).eq('read',false).neq('sender_id',CU.id);
+  const unreadSet=new Set((unreadMsgs||[]).map(m=>m.sender_id));
+  const{data:partners}=await sb.from('profiles').select('id,name,initials,cls,verified,staff_verified,last_seen,hide_online,role').in('id',partnerIds);
+  // Sort partners by latest message
+  const sortedPartners=(partners||[]).sort((a,b)=>{
+    const aIdx=partnerIds.indexOf(a.id);
+    const bIdx=partnerIds.indexOf(b.id);
+    return aIdx-bIdx;
+  });
+  const dmHtml=sortedPartners.map(p=>{
+    const lastText=partnerMap.get(p.id)||'';
+    const hasUnread=unreadSet.has(p.id);
+    const online=isOnline(p.last_seen)&&!(p.hide_online&&p.role&&p.role!=='user');
+    return `<div class="cli" id="cli-${p.id}" onclick="openChat('${p.id}')">
+      <div class="av sm ${p.cls}" style="position:relative">${p.initials}${vb(p.verified,p.staff_verified,'sm')}${online?'<div class="online-dot sm"></div>':''}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px">${esc(p.name)}${hasUnread?'<span style="width:8px;height:8px;background:var(--ac);border-radius:50%;flex-shrink:0;margin-left:auto"></span>':''}</div>
+        <div style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${hasUnread?'var(--ac)':'var(--tx2)'};font-weight:${hasUnread?'500':'400'}">${esc(lastText.slice(0,40))}</div>
+      </div>
+    </div>`;
+  }).join('');
   ct.innerHTML=savedHtml+gcHtml+dmHtml;
 }
 
-function showChatSection(){
-  // Show messages section without triggering any side effects
-  document.querySelectorAll('.sec').forEach(el=>el.classList.remove('on'));
-  const s=document.getElementById('section-messages');
-  if(s)s.classList.add('on');
-  document.getElementById('right-panel').style.display='none';
-  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
-  const nis=document.querySelectorAll('.ni');if(nis[2])nis[2].classList.add('on');
-  document.querySelectorAll('.mni').forEach(n=>n.classList.remove('on'));
-  const mnis=document.querySelectorAll('.mni');if(mnis[2])mnis[2].classList.add('on');
-  window.scrollTo(0,0);
+// FOLLOWERS
+async function followUser(uid){
+  await sb.from('followers').insert({follower_id:CU.id,following_id:uid});
+  await sb.from('profiles').update({followers_count:sb.rpc('increment',{row_id:uid,table_name:'profiles',col_name:'followers_count'})}).eq('id',uid);
+  // Simple increment
+  const{data:p}=await sb.from('profiles').select('followers_count').eq('id',uid).single();
+  if(p)await sb.from('profiles').update({followers_count:(p.followers_count||0)+1}).eq('id',uid);
 }
 
-async function openChat(partnerId){
-  // Show section if needed
-  const s=document.getElementById('section-messages');
-  if(!s||!s.classList.contains('on')){
-    showChatSection();
-    await loadChatList();
-  }
-  // Highlight
-  document.querySelectorAll('.cli').forEach(el=>el.classList.remove('on'));
-  const cli=document.getElementById('cli-'+partnerId);if(cli)cli.classList.add('on');
-  // Load profile
-  const{data:partner}=await sb.from('profiles').select('*').eq('id',partnerId).single();
-  if(!partner)return;
-  activeChatUser=partner;activeChatType='dm';
-  renderChatWindow(partner.name,partner.cls,partner.initials,partner.verified,partner.staff_verified);
-  await loadMessages(partnerId);
-  await sb.from('messages').update({read:true,read_at:new Date().toISOString()}).eq('receiver_id',CU.id).eq('sender_id',partnerId).eq('read',false);
-  loadUnread();
-  if(chatChannel){sb.removeChannel(chatChannel);chatChannel=null;}
-  chatChannel=sb.channel('dm-'+[CU.id,partnerId].sort().join('-'))
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},payload=>{
-      const m=payload.new;
-      if((m.sender_id===CU.id&&m.receiver_id===partnerId)||(m.sender_id===partnerId&&m.receiver_id===CU.id)){
-        appendMsg(m);
-        if(m.sender_id===partnerId){sb.from('messages').update({read:true,read_at:new Date().toISOString()}).eq('id',m.id);loadUnread();}
-      }
-    }).subscribe();
+async function unfollowUser(uid){
+  await sb.from('followers').delete().eq('follower_id',CU.id).eq('following_id',uid);
+  const{data:p}=await sb.from('profiles').select('followers_count').eq('id',uid).single();
+  if(p)await sb.from('profiles').update({followers_count:Math.max(0,(p.followers_count||1)-1)}).eq('id',uid);
 }
 
-async function openSavedMessages(){
-  const s=document.getElementById('section-messages');
-  if(!s||!s.classList.contains('on')){showChatSection();await loadChatList();}
-  document.querySelectorAll('.cli').forEach(el=>el.classList.remove('on'));
-  const cli=document.getElementById('cli-saved');if(cli)cli.classList.add('on');
-  activeChatUser={id:CU.id,name:'Избранное',last_seen:null};activeChatType='saved';
-  renderChatWindow('Избранное','av-blue','⭐','none',false);
-  await loadMessages(CU.id,true);
-  if(chatChannel){sb.removeChannel(chatChannel);chatChannel=null;}
-  chatChannel=sb.channel('saved-'+CU.id)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},payload=>{
-      const m=payload.new;if(m.sender_id===CU.id&&m.receiver_id===CU.id)appendMsg(m);
-    }).subscribe();
+async function loadFollowersCount(uid){
+  const{count}=await sb.from('followers').select('*',{count:'exact',head:true}).eq('following_id',uid);
+  return count||0;
 }
 
-async function openGroupChat(gcId,gcName,gcColor){
-  const s=document.getElementById('section-messages');
-  if(!s||!s.classList.contains('on')){showChatSection();await loadChatList();}
-  document.querySelectorAll('.cli').forEach(el=>el.classList.remove('on'));
-  const cli=document.getElementById('cli-gc-'+gcId);if(cli)cli.classList.add('on');
-  activeChatType='group';activeGroupChat={id:gcId,name:gcName,avatar_color:gcColor};
-  renderChatWindow(gcName,gcColor,gcName[0].toUpperCase(),'none',false,true,gcId);
-  await loadGroupMessages(gcId);
-  if(chatChannel){sb.removeChannel(chatChannel);chatChannel=null;}
-  chatChannel=sb.channel('gc-'+gcId)
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages'},payload=>{
-      if(payload.new.chat_id===gcId)appendGroupMsg(payload.new);
-    }).subscribe();
-}
-
-function renderChatWindow(name,cls,initials,verified,sv,isGroup=false,gcId=null){
-  const area=document.getElementById('chat-area');
-  if(!area)return;
-  const onlineStatus=(()=>{
-    if(!activeChatUser||activeChatUser.id===CU.id||isGroup)return'';
-    const hideOnline=activeChatUser.hide_online&&activeChatUser.role&&activeChatUser.role!=='user';
-    if(hideOnline)return'<div style="font-size:11px;color:var(--tx2)">Администратор</div>';
-    if(isOnline(activeChatUser.last_seen))return'<div style="font-size:11px;color:#1D9E75">В сети</div>';
-    return'<div style="font-size:11px;color:var(--tx2)">Был(а) '+(activeChatUser.last_seen?ago(activeChatUser.last_seen):'')+'</div>';
-  })();
-  area.innerHTML=`
-    <div style="padding:12px 16px;border-bottom:.5px solid var(--br);display:flex;align-items:center;gap:10px;background:var(--bg);flex-shrink:0;cursor:${activeChatUser&&activeChatUser.id!==CU.id&&!isGroup?'pointer':'default'}" onclick="${activeChatUser&&activeChatUser.id!==CU.id&&!isGroup?`openUserProfile('${activeChatUser.id}')`:isGroup?`openGCMembers('${gcId}')`:''}">
-      <div class="av sm ${cls}" style="position:relative">${initials}${vb(verified,sv,'sm')}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${esc(name)} ${vi(verified,sv)}</div>
-        ${isGroup?`<div style="font-size:11px;color:var(--tx2)" id="gc-cnt">Участники</div>`:onlineStatus}
-      </div>
-    </div>
-    <div class="cms" id="chat-msgs"></div>
-    <div class="cir">
-      <div class="spick" id="spick">${STICKERS.map(s=>`<div class="stk2" onclick="sendSticker('${s}')">${s}</div>`).join('')}</div>
-      <button class="bsm" onclick="toggleSpick()" style="padding:7px 10px;flex-shrink:0"><i class="ti ti-mood-happy" style="font-size:16px"></i></button>
-      <textarea class="cinp" id="chat-inp" placeholder="Написать... (Shift+Enter — новая строка, Enter — отправить)" rows="1" onkeydown="handleChatKey(event)" oninput="autoResizeChatInp(this)" style="resize:none;overflow-y:hidden;line-height:1.4;max-height:120px;padding:9px 14px"></textarea>
-      <button class="bsnd" onclick="sendMsg()"><i class="ti ti-send" style="font-size:15px"></i></button>
-    </div>
-    <div class="select-toolbar" id="select-toolbar">
-      <span id="select-count" style="font-size:13px;font-weight:500;flex:1">0 выбрано</span>
-      <button class="bsm" onclick="forwardSelected()"><i class="ti ti-corner-up-right"></i>Переслать</button>
-      <button class="bdanger" onclick="deleteSelected()"><i class="ti ti-trash"></i>Удалить</button>
-      <button class="bsm" onclick="cancelSelect()"><i class="ti ti-x"></i>Отмена</button>
-    </div>`;
-  if(isGroup&&gcId)loadGCCount(gcId);
-}
-
-async function openChatWith(partner){
-  if(!partner||!partner.id)return;
-  showChatSection();
-  await loadChatList();
-  await openChat(partner.id);
-}
-
-async function loadUnread(){
-  if(!CU)return;
-  const{count}=await sb.from('messages').select('*',{count:'exact',head:true}).eq('receiver_id',CU.id).eq('read',false).neq('sender_id',CU.id);
-  const n=count||0;
-  const b=document.getElementById('unread-badge');const mb=document.getElementById('mob-unread');
-  if(n>0){if(b){b.textContent=n;b.style.display='';}if(mb){mb.textContent=n;mb.style.display='flex';}}
-  else{if(b)b.style.display='none';if(mb)mb.style.display='none';}
-}
-
-function toggleSpick(){const p=document.getElementById('spick');if(p)p.classList.toggle('on');}
-async function sendSticker(s){const p=document.getElementById('spick');if(p)p.classList.remove('on');if(activeChatType==='dm'||activeChatType==='saved'){const to=activeChatUser.id;await sb.from('messages').insert({sender_id:CU.id,receiver_id:to,content:s,sticker:s});}else if(activeChatType==='group'&&activeGroupChat)await sb.from('group_messages').insert({chat_id:activeGroupChat.id,sender_id:CU.id,content:s,sticker:s});loadChatList();}
-async function loadMessages(partnerId,isSaved=false){
-  const ct=document.getElementById('chat-msgs');if(!ct)return;
-  ct.innerHTML='<div style="text-align:center;padding:20px"><div class="sp2" style="margin:0 auto"></div></div>';
-  let query;
-  if(isSaved){
-    query=sb.from('messages').select('*').eq('sender_id',CU.id).eq('receiver_id',CU.id);
-  } else {
-    query=sb.from('messages').select('*').or(`sender_id.eq.${CU.id},receiver_id.eq.${CU.id}`).order('created_at',{ascending:true}).limit(100);
-    const{data:allMsgs}=await query;
-    // Filter to only messages between these two users
-    const msgs=(allMsgs||[]).filter(m=>
-      (m.sender_id===CU.id&&m.receiver_id===partnerId)||
-      (m.sender_id===partnerId&&m.receiver_id===CU.id)
-    );
-    if(!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">Начните диалог!</div>';return;}
-    ct.innerHTML='';
-    for(const m of msgs){
-      const isOut=m.sender_id===CU.id;
-      const deleted=(isOut&&m.deleted_by_sender)||(!isOut&&m.deleted_by_receiver);
-      if(!deleted)appendMsg(m,false);
-    }
-    ct.scrollTop=ct.scrollHeight;
-    return;
-  }
-  const{data:msgs}=await query.order('created_at',{ascending:true}).limit(50);
-  if(!msgs||!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">'+(isSaved?'Нет сохранённых сообщений':'Начните диалог!')+'</div>';return;}
-  ct.innerHTML='';
-  for(const m of msgs){
-    const isOut=m.sender_id===CU.id;
-    const deleted=(isOut&&m.deleted_by_sender)||(!isOut&&m.deleted_by_receiver);
-    if(!deleted)appendMsg(m,false);
-  }
-  ct.scrollTop=ct.scrollHeight;
-}
-async function loadGroupMessages(gcId){
-  const ct=document.getElementById('chat-msgs');if(!ct)return;
-  ct.innerHTML='<div style="text-align:center;padding:20px"><div class="sp2" style="margin:0 auto"></div></div>';
-  const{data:msgs}=await sb.from('group_messages').select('*,profiles(name,initials,cls)').eq('chat_id',gcId).order('created_at',{ascending:true}).limit(50);
-  if(!msgs||!msgs.length){ct.innerHTML='<div style="text-align:center;padding:24px;font-size:13px;color:var(--tx2)">Начните общение!</div>';return;}
-  ct.innerHTML='';msgs.forEach(m=>appendGroupMsg(m,false));ct.scrollTop=ct.scrollHeight;
-}
-async function appendMsg(m,scroll=true){
-  const ct=document.getElementById('chat-msgs');if(!ct)return;
-  const isOut=m.sender_id===CU.id;
-  const t=new Date(m.created_at);
-  const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
-  const readInfo=isOut&&m.read?'<i class="ti ti-checks" style="font-size:11px;opacity:.7"></i>':'';
-  const editedBadge=m.edited?'<span style="font-size:9px;opacity:.6"> ред.</span>':'';
-  const fwdBadge=m.forwarded_text?'<div style="font-size:10px;opacity:.7;margin-bottom:3px"><i class="ti ti-corner-up-right" style="font-size:10px"></i> Пересланное</div>':'';
-  const wrapper=document.createElement('div');
-  wrapper.className='msg-wrapper '+(isOut?'out':'in');
-  wrapper.style.cssText='display:flex;align-items:flex-end;gap:6px;margin-bottom:2px;'+(isOut?'flex-direction:row-reverse':'');
-  // Checkbox
-  const cb=document.createElement('input');
-  cb.type='checkbox';cb.className='msg-select';
-  cb.style.cssText='display:none;width:16px;height:16px;flex-shrink:0;cursor:pointer;accent-color:var(--ac)';
-  cb.onchange=()=>toggleMsgSelect(m.id,wrapper);
-  // Message bubble
-  const div=document.createElement('div');
-  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
-  div.setAttribute('data-id',m.id);
-  div.setAttribute('data-out',isOut?'1':'0');
-  div.onclick=()=>{if(selectMode){cb.checked=!cb.checked;toggleMsgSelect(m.id,wrapper);}};
-  // Actions on hover
-  const acts=document.createElement('div');
-  acts.className='msg-actions';
-  // Edit button (only for own messages, not stickers)
-  if(isOut&&!m.sticker){
-    const editBtn=document.createElement('button');
-    editBtn.className='msg-act-btn';editBtn.title='Редактировать';
-    editBtn.innerHTML='<i class="ti ti-edit"></i>';
-    editBtn.onclick=(e)=>{e.stopPropagation();startEditMsg(m.id,m.content,false);};
-    acts.appendChild(editBtn);
-  }
-  // Delete button
-  const delBtn=document.createElement('button');
-  delBtn.className='msg-act-btn';delBtn.title='Удалить';
-  delBtn.innerHTML='<i class="ti ti-trash"></i>';
-  delBtn.onclick=(e)=>{e.stopPropagation();openDeleteMsgModal(m.id,isOut,'dm');};
-  acts.appendChild(delBtn);
-  // Select button
-  const selBtn=document.createElement('button');
-  selBtn.className='msg-act-btn';selBtn.title='Выбрать';
-  selBtn.innerHTML='<i class="ti ti-checkbox"></i>';
-  selBtn.onclick=(e)=>{e.stopPropagation();if(!selectMode){selectMode=true;document.getElementById('chat-msgs').classList.add('select-mode');document.querySelectorAll('.msg-select').forEach(el=>el.style.display='block');}cb.checked=!cb.checked;toggleMsgSelect(m.id,wrapper);};
-  acts.appendChild(selBtn);
-  div.appendChild(acts);
-  // Content
-  const body=document.createElement('div');
-  body.innerHTML=fwdBadge+(m.sticker?m.sticker:esc(m.content));
-  div.insertBefore(body,acts);
-  // Time
-  const timeEl=document.createElement('div');
-  timeEl.className='mt2';
-  timeEl.innerHTML=time+' '+readInfo+editedBadge;
-  div.insertBefore(timeEl,acts);
-  wrapper.appendChild(cb);wrapper.appendChild(div);
-  ct.appendChild(wrapper);
-  if(scroll)ct.scrollTop=ct.scrollHeight;
-}
-
-
-async function appendGroupMsg(m,scroll=true){
-  const ct=document.getElementById('chat-msgs');if(!ct)return;
-  const isOut=m.sender_id===CU.id;const p=m.profiles;
-  const t=new Date(m.created_at);const time=t.getHours()+':'+String(t.getMinutes()).padStart(2,'0');
-  const div=document.createElement('div');
-  div.className='msg '+(isOut?'out':'in')+(m.sticker?' stk':'');
-  div.setAttribute('data-id',m.id);
-  div.innerHTML=(!isOut&&p?`<div style="font-size:10px;opacity:.7;margin-bottom:3px">${esc(p.name)}</div>`:'')+
-    (m.sticker?m.sticker:esc(m.content))+`<div class="mt2">${time}</div><div class="msg-actions"><button class="msg-act-btn" onclick="deleteGroupMsg('${m.id}')" title="Удалить"><i class="ti ti-trash"></i></button></div>`;
-  ct.appendChild(div);if(scroll)ct.scrollTop=ct.scrollHeight;
-}
-async function sendMsg(){
-  const inp=document.getElementById('chat-inp');if(!inp)return;
-  const text=inp.value.trim();if(!text)return;
-  if(containsBadWord(text)){toast('Недопустимые слова','r');return;}
-  // Handle editing mode
-  if(inp.getAttribute('data-editing')==='1'&&editingMsgId){
-    await saveEdit(text);
-    return;
-  }
-  inp.value='';
-  // Reset textarea height
-  inp.style.height='auto';
-  if(activeChatType==='dm'&&activeChatUser){
-    if(activeChatUser.privacy_messages==='none'){toast('Этот пользователь не принимает сообщения','r');return;}
-    const{data:m}=await sb.from('messages').insert({sender_id:CU.id,receiver_id:activeChatUser.id,content:text,read:false}).select().single();
-    if(m)appendMsg(m); // show immediately
-    if(activeChatUser.id!==CU.id)createNotif(activeChatUser.id,'message',CP.name+': '+text.slice(0,50));
-  } else if(activeChatType==='saved'){
-    const{data:m}=await sb.from('messages').insert({sender_id:CU.id,receiver_id:CU.id,content:text,read:true}).select().single();
-    if(m)appendMsg(m);
-  } else if(activeChatType==='group'&&activeGroupChat){
-    const{data:m}=await sb.from('group_messages').insert({chat_id:activeGroupChat.id,sender_id:CU.id,content:text}).select('*,profiles(name,initials,cls)').single();
-    if(m)appendGroupMsg(m);
-  }
-  loadChatList();
-}
-async function loadGCCount(gcId){const{count}=await sb.from('group_chat_members').select('*',{count:'exact',head:true}).eq('chat_id',gcId);const el=document.getElementById('gc-cnt');if(el)el.textContent=(count||0)+' участников · Управление';}
-async function openGCMembers(gcId){
-  document.getElementById('gcm-title').textContent='Участники группы';
-  const{data:members}=await sb.from('group_chat_members').select('*,profiles(id,name,initials,cls)').eq('chat_id',gcId);
+async function showFollowers(uid,name){
+  const{data:fdata}=await sb.from('followers').select('follower_id,profiles(id,name,initials,cls,verified,staff_verified)').eq('following_id',uid).limit(50);
+  document.getElementById('gcm-title').textContent='Подписчики — '+name;
   const ct=document.getElementById('gcm-list');
-  const isCreator=activeGroupChat&&members&&members.some(m=>m.user_id===CU.id);
-  ct.innerHTML=(members||[]).map(m=>{const p=m.profiles;return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:.5px solid var(--br)"><div class="av sm ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div><div style="flex:1;font-size:13px">${p?esc(p.name):'?'}</div>${p&&p.id!==CU.id&&(CP.role==='super'||CP.role==='admin')?`<button class="ba da" onclick="kickFromGroup('${gcId}','${m.id}')"><i class="ti ti-user-minus"></i>Исключить</button>`:''}</div>`;}).join('');
-  // Leave group button
-  ct.innerHTML+=`<div style="margin-top:12px"><button class="bdanger" onclick="leaveGroup('${gcId}')"><i class="ti ti-logout"></i>Покинуть группу</button></div>`;
+  if(!fdata||!fdata.length){ct.innerHTML='<div style="padding:16px;font-size:13px;color:var(--tx2)">Нет подписчиков</div>';document.getElementById('gc-members-modal').classList.add('on');return;}
+  ct.innerHTML=fdata.map(f=>{const p=f.profiles;return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--br);cursor:pointer" onclick="openUserProfile('${p?p.id:''}')">
+    <div class="av sm ${p?p.cls:'av-blue'}" style="position:relative">${p?p.initials:'?'}${vb(p?p.verified:'none',p?p.staff_verified:false,'sm')}</div>
+    <div style="flex:1;font-size:13px;font-weight:500">${p?esc(p.name):'?'}</div>
+  </div>`;}).join('');
   document.getElementById('gc-members-modal').classList.add('on');
 }
-async function kickFromGroup(gcId,memberId){await sb.from('group_chat_members').delete().eq('id',memberId);toast('Участник исключён','r');openGCMembers(gcId);}
-async function leaveGroup(gcId){await sb.from('group_chat_members').delete().eq('chat_id',gcId).eq('user_id',CU.id);closeMod('gc-members-modal');toast('Вы покинули группу','g');loadChatList();document.getElementById('chat-area').innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--tx2)"><div style="font-size:13px">Вы покинули эту группу</div></div>';}
 
-async function openNewGroupChat(){
-  document.getElementById('gc-name').value='';selectedGCMembers=new Set();
-  const ct=document.getElementById('gc-friends-list');ct.innerHTML='<div style="padding:10px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div>';
-  const{data:fdata}=await sb.from('friends').select('*').or(`sender_id.eq.${CU.id},receiver_id.eq.${CU.id}`).eq('status','accepted');
-  if(!fdata||!fdata.length){ct.innerHTML='<div style="padding:12px;font-size:12px;color:var(--tx2)">Нет друзей</div>';document.getElementById('group-chat-modal').classList.add('on');return;}
-  const ids=fdata.map(f=>f.sender_id===CU.id?f.receiver_id:f.sender_id);
-  const{data:profiles}=await sb.from('profiles').select('id,name,initials,cls').in('id',ids);
-  ct.innerHTML=(profiles||[]).map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer" onclick="toggleGCM('${p.id}')"><input type="checkbox" id="gcm-${p.id}" style="width:16px;height:16px;cursor:pointer;flex-shrink:0"><div class="av sm ${p.cls}">${p.initials}</div><div style="font-size:13px">${esc(p.name)}</div></div>`).join('');
-  document.getElementById('group-chat-modal').classList.add('on');
-}
-function toggleGCM(id){const cb=document.getElementById('gcm-'+id);if(selectedGCMembers.has(id)){selectedGCMembers.delete(id);if(cb)cb.checked=false;}else{selectedGCMembers.add(id);if(cb)cb.checked=true;}}
-async function createGroupChat(){
-  const name=document.getElementById('gc-name').value.trim();if(!name){toast('Введите название','r');return;}if(selectedGCMembers.size===0){toast('Выберите участников','r');return;}
-  const cls=AVC[Math.floor(Math.random()*AVC.length)];
-  const{data:gc,error}=await sb.from('group_chats').insert({name,creator_id:CU.id,avatar_color:cls}).select().single();if(error){toast('Ошибка','r');return;}
-  const members=[{chat_id:gc.id,user_id:CU.id},...[...selectedGCMembers].map(uid=>({chat_id:gc.id,user_id:uid}))];
-  await sb.from('group_chat_members').insert(members);closeMod('group-chat-modal');toast('Группа создана!','g');showSection('messages');setTimeout(()=>openGroupChat(gc.id,gc.name,gc.avatar_color),400);
+
+async function saveSettings(){
+  const fname=document.getElementById('set-fname').value.trim();
+  const lname=document.getElementById('set-lname').value.trim();
+  if(!fname||!lname){toast('Имя и фамилия обязательны','r');return;}
+  if(!isValidName(fname)||!isValidName(lname)){toast('Имя содержит недопустимые символы','r');return;}
+  if(containsBadWord(fname)||containsBadWord(lname)){toast('Имя содержит недопустимые слова','r');return;}
+  const fullName=fname+' '+lname;
+  const bio=document.getElementById('set-bio').value.trim();
+  const city=document.getElementById('set-city').value.trim();
+  const website=document.getElementById('set-website').value.trim();
+  const privMsg=document.getElementById('priv-msg').value;
+  const privWall=document.getElementById('priv-wall').value;
+  const privFriends=document.getElementById('priv-friends').value;
+  const initials=(fname[0]+(lname[0]||'')).toUpperCase();
+  await sb.from('profiles').update({name:fullName,bio,city,website,cls:selAvColor||CP.cls,cover_color:selCoverColor||CP.cover_color||'#185FA5',initials,privacy_messages:privMsg,privacy_wall:privWall,privacy_friends:privFriends}).eq('id',CU.id);
+  CP=await loadP(CU.id);updateUI();toast('Профиль обновлён!','g');showSection('profile');
 }
 
-async function loadUnread(){
-  const{count}=await sb.from('messages').select('*',{count:'exact',head:true}).eq('receiver_id',CU.id).eq('read',false).neq('sender_id',CU.id);
-  const n=count||0;
-  const b=document.getElementById('unread-badge');const mb=document.getElementById('mob-unread');
-  if(n>0){if(b){b.textContent=n;b.style.display='';}if(mb){mb.textContent=n;mb.style.display='flex';}}
-  else{if(b)b.style.display='none';if(mb)mb.style.display='none';}
-}
-
-// ── COMMUNITIES ──
-async function loadCommunities(){
-  const ct=document.getElementById('communities-list');ct.innerHTML='<div style="padding:24px;text-align:center"><div class="sp2" style="margin:0 auto 10px"></div></div>';
-  const{data}=await sb.from('communities').select('*').order('created_at',{ascending:false});
-  if(!data||!data.length){ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)">Сообществ нет. Создайте первое!</div>';return;}
-  ct.innerHTML=data.map(c=>`<div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:8px" onclick="openCommunityPage('${c.id}')"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:4px">${esc(c.name)} ${c.verified&&c.verified!=='none'?`<i class="ti ti-rosette-discount-check" style="font-size:12px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i>`:''}</div><div style="font-size:11px;color:var(--tx2)">${esc(c.description||'')}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${c.members_count||0} участников</div></div><i class="ti ti-chevron-right" style="color:var(--tx2);flex-shrink:0"></i></div>`).join('');
-}
-async function openCommunityPage(id, updateHash=true){
+async function openCommunityPage(id){
   closeSearch();document.getElementById('srch').value='';
   const{data:c}=await sb.from('communities').select('*').eq('id',id).single();if(!c)return;
-  if(updateHash){window.location.hash='/community/'+(c.custom_id||id);}
   currentCommunity=c;currentCpTab='posts';
   const cpav=document.getElementById('cp-av');cpav.className='av lg '+c.avatar_color;cpav.textContent=c.avatar_initials;
-  document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<span class="vtooltip"><i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i><span class="vtip">${c.verified==='gold'?'Публичная персона':'Верифицировано'}</span></span>`:'');
-  document.getElementById('cp-desc').textContent=(c.description||'')+' · ID: '+c.id.slice(0,8);
+  document.getElementById('cp-name').innerHTML=esc(c.name)+(c.verified&&c.verified!=='none'?`<i class="ti ti-rosette-discount-check" style="font-size:16px;color:${c.verified==='gold'?'#BA7517':'#185FA5'}"></i>`:'');
   document.getElementById('cp-desc').textContent=c.description||'';
   document.getElementById('cp-members').textContent=(c.members_count||0)+' участников';
   const cpc=document.getElementById('cp-cover');if(cpc)cpc.style.background=c.cover_color||'#3C3489';
@@ -1777,107 +1561,19 @@ async function openCommunityPage(id, updateHash=true){
 }
 function cpTab(tab,el){currentCpTab=tab;document.querySelectorAll('#section-community-page .tab').forEach(t=>t.classList.remove('on'));el.classList.add('on');if(tab==='posts')loadCommunityPosts();else if(tab==='topics')loadCommunityTopics();else if(tab==='members')loadCommunityMembers();}
 async function checkMembership(){if(!currentCommunity||!CU)return false;const{data}=await sb.from('community_members').select('id').eq('community_id',currentCommunity.id).eq('user_id',CU.id).single();return!!data;}
-async function getCommunityRole(){
-  if(!currentCommunity||!CU)return null;
-  if(currentCommunity.owner_id===CU.id)return 'owner';
-  if(CP.role==='super'||CP.role==='admin')return 'owner';
-  const{data}=await sb.from('community_members').select('role,permissions').eq('community_id',currentCommunity.id).eq('user_id',CU.id).single();
-  if(!data)return null;
-  return data.permissions||data.role||'member';
-}
-
 async function loadCommunityPosts(){
   if(!currentCommunity)return;
   const ct=document.getElementById('cp-content');
-  const myRole=await getCommunityRole();
-  const isMember=!!myRole;
-  const canPost=myRole==='owner'||myRole==='admin'||myRole==='editor';
-  const canManage=myRole==='owner'||myRole==='admin'||myRole==='editor';
-  let html='';
-  if(isMember&&canPost){
-    html=`<div class="pbox" style="margin-bottom:12px">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
-        <div class="av sm ${CP.cls}">${CP.initials}</div>
-        <div class="pin" contenteditable="true" id="cp-pinput"></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--tx2);cursor:pointer">
-          <input type="checkbox" id="post-as-community" style="accent-color:var(--ac)">
-          От имени сообщества
-        </label>
-        <button class="bp" onclick="addCommunityPost()" style="margin-left:auto">Опубликовать</button>
-      </div>
-    </div>`;
-  } else if(isMember&&!canPost){
-    html=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);font-size:12px;color:var(--tx2);margin-bottom:12px"><i class="ti ti-lock"></i> Только администраторы могут писать</div>`;
-  }
+  const isMember=await checkMembership();
+  let html=isMember?`<div class="pbox" style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><div class="av sm ${CP.cls}">${CP.initials}</div><div class="pin" contenteditable="true" id="cp-pinput"></div></div><div style="display:flex;gap:8px"><button class="bp" onclick="addCommunityPost()" style="margin-left:auto">Опубликовать</button></div></div>`:'';
   ct.innerHTML=html+'<div id="cp-posts-inner"><div style="padding:20px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div></div>';
-  const{data:posts}=await sb.from('community_posts').select('*,profiles(name,initials,cls,verified,staff_verified)').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(30);
+  const{data:posts}=await sb.from('community_posts').select('*,profiles(name,initials,cls,verified,staff_verified)').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(20);
   const inner=document.getElementById('cp-posts-inner');if(!inner)return;
   if(!posts||!posts.length){inner.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Записей пока нет</div>';return;}
-  // Load user's liked posts
-  const cpLikedSet=new Set();
-  if(posts.length){
-    const{data:myLikes}=await sb.from('community_post_likes').select('post_id').eq('user_id',CU.id).in('post_id',posts.map(p=>p.id));
-    (myLikes||[]).forEach(l=>cpLikedSet.add(l.post_id));
-  }
-  inner.innerHTML=posts.map(p=>{
-    const au=p.profiles;
-    const canDel=canManage||p.author_id===CU.id;
-    // If posted as community, show community avatar
-    const avClass=p.posted_as_community?currentCommunity.avatar_color:(au?au.cls:'av-blue');
-    const avText=p.posted_as_community?currentCommunity.avatar_initials:(au?au.initials:'?');
-    const authorName=p.posted_as_community?esc(currentCommunity.name):(au?esc(au.name):'?');
-    const authorClick=p.posted_as_community?'':`onclick="openUserProfile('${p.author_id}')"`;
-    return `<div class="post" style="margin-bottom:12px" id="cpost-${p.id}">
-      <div class="ph">
-        <div class="av sm ${avClass}" style="cursor:${p.posted_as_community?'default':'pointer'}" ${authorClick}>${avText}</div>
-        <div style="flex:1">
-          <div class="pa" style="cursor:${p.posted_as_community?'default':'pointer'}" ${authorClick}>${authorName}${p.posted_as_community?` <span style="font-size:10px;background:var(--acl);color:var(--ac);padding:1px 5px;border-radius:4px">сообщество</span>`:''}</div>
-          <div class="pt">${ago(p.created_at)}</div>
-        </div>
-        ${canDel?`<button class="bsm" onclick="deleteCommunityPost('${p.id}')" style="color:var(--re);font-size:11px"><i class="ti ti-trash"></i></button>`:''}
-      </div>
-      <div class="ptxt">${esc(p.content)}</div>
-      <div class="pfoot">
-        <div class="rxn${cpLikedSet.has(p.id)?' liked':''}" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div>
-      </div>
-    </div>`;
-  }).join('');
+  inner.innerHTML=posts.map(p=>{const au=p.profiles;return `<div class="post" style="margin-bottom:12px"><div class="ph"><div class="av sm ${au?au.cls:'av-blue'}" style="position:relative;cursor:pointer" onclick="openUserProfile('${p.author_id}')">${au?au.initials:'?'}${vb(au?au.verified:'none',au?au.staff_verified:false,'sm')}</div><div style="flex:1"><div class="pa" style="cursor:pointer" onclick="openUserProfile('${p.author_id}')">${au?esc(au.name):'?'} ${vi(au?au.verified:'none',au?au.staff_verified:false)}</div><div class="pt">${ago(p.created_at)}</div></div></div><div class="ptxt">${esc(p.content)}</div><div class="pfoot"><div class="rxn" onclick="toggleCpLike(this,'${p.id}',${p.likes||0})"><i class="ti ti-heart"></i><span>${p.likes||0}</span></div></div></div>`;}).join('');
 }
-
-async function addCommunityPost(){
-  if(!currentCommunity)return;
-  const inp=document.getElementById('cp-pinput');
-  const text=(inp.textContent||inp.innerText||'').trim();
-  if(!text)return;
-  if(containsBadWord(text)){toast('Недопустимые слова','r');return;}
-  const asCommunity=document.getElementById('post-as-community')?.checked||false;
-  await sb.from('community_posts').insert({community_id:currentCommunity.id,author_id:CU.id,content:text,likes:0,posted_as_community:asCommunity});
-  inp.textContent='';
-  toast('Запись опубликована!','g');
-  loadCommunityPosts();
-}
-async function toggleCpLike(el,postId,cur){
-  const sp=el.querySelector('span');
-  // Get both like status AND actual count from DB
-  const[{data:existing},{data:post}]=await Promise.all([
-    sb.from('community_post_likes').select('id').eq('post_id',postId).eq('user_id',CU.id).single(),
-    sb.from('community_posts').select('likes').eq('id',postId).single()
-  ]);
-  const wasLiked=!!existing;
-  const actualCount=post?post.likes:cur;
-  const newN=wasLiked?Math.max(0,actualCount-1):actualCount+1;
-  if(wasLiked){el.classList.remove('liked');}else{el.classList.add('liked');}
-  sp.textContent=newN;
-  if(wasLiked){
-    await sb.from('community_post_likes').delete().eq('post_id',postId).eq('user_id',CU.id);
-    await sb.from('community_posts').update({likes:newN}).eq('id',postId);
-  } else {
-    await sb.from('community_post_likes').insert({post_id:postId,user_id:CU.id});
-    await sb.from('community_posts').update({likes:newN}).eq('id',postId);
-  }
-}
+async function addCommunityPost(){if(!currentCommunity)return;const inp=document.getElementById('cp-pinput');const text=(inp.textContent||inp.innerText||'').trim();if(!text)return;if(containsBadWord(text)){toast('Недопустимые слова','r');return;}await sb.from('community_posts').insert({community_id:currentCommunity.id,author_id:CU.id,content:text,likes:0});inp.textContent='';toast('Запись опубликована!','g');loadCommunityPosts();}
+async function toggleCpLike(el,id,cur){el.classList.toggle('liked');const sp=el.querySelector('span');const n=el.classList.contains('liked')?cur+1:cur-1;sp.textContent=n;await sb.from('community_posts').update({likes:n}).eq('id',id);}
 async function loadCommunityTopics(){
   if(!currentCommunity)return;
   const ct=document.getElementById('cp-content');
@@ -1916,44 +1612,17 @@ async function toggleJoinCommunity(){
 }
 function openCreateCommunity(){document.getElementById('cm-name').value='';document.getElementById('cm-desc').value='';selCmColor=AVC[0];renderCpick('cm-color-pick',AVC,selCmColor,'cm');document.getElementById('create-community-modal').classList.add('on');}
 async function createCommunity(){
-  const name=document.getElementById('cm-name').value.trim();
-  const desc=document.getElementById('cm-desc').value.trim();
-  const customId=document.getElementById('cm-id').value.trim().toLowerCase();
+  const name=document.getElementById('cm-name').value.trim(),desc=document.getElementById('cm-desc').value.trim();
   if(!name){toast('Введите название','r');return;}
   if(containsBadWord(name)){toast('Название содержит недопустимые слова','r');return;}
-  if(customId&&!/^[a-zA-Z0-9_]+$/.test(customId)){toast('ID: только латиница, цифры и _','r');return;}
-  // Check ID uniqueness
-  if(customId){
-    const{data:ex}=await sb.from('communities').select('id').eq('custom_id',customId).single();
-    if(ex){toast('Этот ID уже занят','r');return;}
-  }
   const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()||'СО';
-  const insertData={name,description:desc,owner_id:CU.id,avatar_color:selCmColor||AVC[0],avatar_initials:initials,members_count:1};
-  if(customId)insertData.custom_id=customId;
-  const{data,error}=await sb.from('communities').insert(insertData).select().single();
+  const{data,error}=await sb.from('communities').insert({name,description:desc,owner_id:CU.id,avatar_color:selCmColor||AVC[0],avatar_initials:initials,members_count:1}).select().single();
   if(error){toast('Ошибка создания','r');return;}
   await sb.from('community_members').insert({community_id:data.id,user_id:CU.id,role:'owner'});
   closeMod('create-community-modal');toast('Сообщество создано!','g');loadCommunities();
 }
-function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-id').value=currentCommunity.custom_id||'';document.getElementById('cs-desc').value=currentCommunity.description||'';
-  loadCommunityVerifyStatus();selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
-async function saveCommunitySettings(){
-  if(!currentCommunity)return;
-  const name=document.getElementById('cs-name').value.trim();
-  if(!name){toast('Введите название','r');return;}
-  const desc=document.getElementById('cs-desc').value.trim();
-  const customId=document.getElementById('cs-id').value.trim().toLowerCase();
-  if(customId&&!/^[a-zA-Z0-9_]+$/.test(customId)){toast('ID: только латиница, цифры и _','r');return;}
-  if(customId&&customId!==currentCommunity.custom_id){
-    const{data:ex}=await sb.from('communities').select('id').eq('custom_id',customId).single();
-    if(ex){toast('Этот ID уже занят','r');return;}
-  }
-  const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-  const updateData={name,description:desc,avatar_color:selCsColor||currentCommunity.avatar_color,avatar_initials:initials};
-  if(customId)updateData.custom_id=customId;
-  await sb.from('communities').update(updateData).eq('id',currentCommunity.id);
-  closeMod('community-settings-modal');toast('Обновлено!','g');openCommunityPage(currentCommunity.id);
-}
+function openCommunitySettings(){if(!currentCommunity)return;document.getElementById('cs-name').value=currentCommunity.name||'';document.getElementById('cs-desc').value=currentCommunity.description||'';selCsColor=currentCommunity.avatar_color||AVC[0];renderCpick('cs-color-pick',AVC,selCsColor,'cs');document.getElementById('community-settings-modal').classList.add('on');}
+async function saveCommunitySettings(){if(!currentCommunity)return;const name=document.getElementById('cs-name').value.trim();if(!name){toast('Введите название','r');return;}const desc=document.getElementById('cs-desc').value.trim();const initials=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();await sb.from('communities').update({name,description:desc,avatar_color:selCsColor||currentCommunity.avatar_color,avatar_initials:initials}).eq('id',currentCommunity.id);closeMod('community-settings-modal');toast('Обновлено!','g');openCommunityPage(currentCommunity.id);}
 async function deleteCommunity(){if(!currentCommunity)return;if(!confirm('Удалить сообщество?'))return;await sb.from('communities').delete().eq('id',currentCommunity.id);closeMod('community-settings-modal');currentCommunity=null;toast('Сообщество удалено','r');showSection('communities');}
 
 // ── ADMIN ──
@@ -1962,7 +1631,7 @@ async function renderAdmin(){
   const{data:profiles}=await sb.from('profiles').select('*').order('created_at');
   const{data:reports}=await sb.from('reports').select('*,reporter:reporter_id(name,login),target:target_id(name,login)').order('created_at',{ascending:false});
   AP=profiles||[];AR=reports||[];updStats();
-  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);else if(CT==='support')loadAdminTickets(body);
+  if(CT==='users')renderUsers(body);else if(CT==='reports')renderReports(body);else if(CT==='verify_req')renderVerifyRequests(body);else if(CT==='staff')renderStaff(body);else if(CT==='comm_admin')renderCommAdmin(body);
 }
 function updStats(){
   document.getElementById('s-u').textContent=AP.filter(u=>!u.is_deleted).length;
@@ -2005,10 +1674,7 @@ async function renderVerifyRequests(body){
   const{data:reqs}=await sb.from('verify_requests').select('*,profiles(name,login,initials,cls)').eq('status','pending').order('created_at');
   const cnt=reqs?reqs.length:0;document.getElementById('vreq-cnt').textContent=cnt||'';
   if(!reqs||!reqs.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Заявок нет</div>';return;}
-  // Add community verify requests
-  const{data:creqs}=await sb.from('community_verify_requests').select('*,communities(name,avatar_color,avatar_initials),profiles(name,login)').eq('status','pending').order('created_at');
-  const commHtml=(creqs||[]).map(r=>{const c=r.communities;const p=r.profiles;return `<div class="ar rpt"><div class="av md ${c?c.avatar_color:'av-blue'}">${c?c.avatar_initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${c?esc(c.name):'?'} <span class="ch pending">Сообщество</span></div><div style="font-size:11px;color:var(--tx2)">от @${p?p.login:''}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveCommunityVerify('${r.id}','${r.community_id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="approveCommunityVerify('${r.id}','${r.community_id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button><button class="ba da" onclick="rejectCommunityVerify('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
-  body.innerHTML=commHtml+reqs.map(r=>{const p=r.profiles;return `<div class="ar rpt"><div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${p?esc(p.name):'?'} <span style="font-size:11px;color:var(--tx2)">@${p?p.login:''}</span></div><div style="font-size:11px;color:var(--tx2);margin-top:2px">Тип: ${r.type==='gold'?'🟡 Золотая':'🔵 Синяя'}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveVerifyReq('${r.id}','${r.user_id}','${r.type}')"><i class="ti ti-check"></i>Одобрить</button><button class="ba da" onclick="rejectVerifyReq('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
+  body.innerHTML=reqs.map(r=>{const p=r.profiles;return `<div class="ar rpt"><div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${p?esc(p.name):'?'} <span style="font-size:11px;color:var(--tx2)">@${p?p.login:''}</span></div><div style="font-size:11px;color:var(--tx2);margin-top:2px">Тип: ${r.type==='gold'?'🟡 Золотая':'🔵 Синяя'}</div><div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(r.reason)}</div><div style="font-size:11px;color:var(--tx2);margin-top:2px">${ago(r.created_at)}</div></div><div class="aac"><button class="ba bl2" onclick="approveVerifyReq('${r.id}','${r.user_id}','${r.type}')"><i class="ti ti-check"></i>Одобрить</button><button class="ba da" onclick="rejectVerifyReq('${r.id}')"><i class="ti ti-x"></i>Отклонить</button></div></div>`;}).join('');
 }
 async function approveVerifyReq(reqId,userId,type){await sb.from('profiles').update({verified:type}).eq('id',userId);await sb.from('verify_requests').update({status:'approved'}).eq('id',reqId);await createNotif(userId,'system','Ваша заявка на верификацию одобрена!');renderAdmin();toast('Верификация выдана!','g');}
 async function rejectVerifyReq(reqId){await sb.from('verify_requests').update({status:'rejected'}).eq('id',reqId);renderAdmin();toast('Заявка отклонена','r');}
@@ -2024,7 +1690,7 @@ function renderStaff(body){
 async function renderCommAdmin(body){
   const{data:comms}=await sb.from('communities').select('*').order('created_at',{ascending:false});const P=PERMS[CP.role]||{};
   if(!comms||!comms.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Сообществ нет</div>';return;}
-  body.innerHTML=comms.map(c=>{let acts='';if(P.verifyUsers){if(!c.verified||c.verified==='none')acts=`<button class="ba bl2" onclick="verifyCom('${c.id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="verifyCom('${c.id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button>`;else acts=`<button class="ba gh" onclick="revokeCom('${c.id}')"><i class="ti ti-x"></i>Отозвать</button>`;}if(P.manageStaff)acts+=`<button class="ba da" onclick="adminDeleteCommunity('${c.id}','${ea(c.name)}')"><i class="ti ti-trash"></i></button>`;return `<div class="ar"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.members_count||0} участников</div></div><div class="aac">${acts}</div></div>`;}).join('');
+  body.innerHTML=comms.map(c=>{let acts='';if(P.verifyUsers){if(!c.verified||c.verified==='none')acts=`<button class="ba bl2" onclick="verifyCom('${c.id}','blue')"><i class="ti ti-rosette-discount-check"></i>Синяя</button><button class="ba go" onclick="verifyCom('${c.id}','gold')"><i class="ti ti-rosette-discount-check"></i>Золотая</button>`;else acts=`<button class="ba gh" onclick="revokeCom('${c.id}')"><i class="ti ti-x"></i>Отозвать</button>`;}return `<div class="ar"><div class="av md ${c.avatar_color}" style="position:relative">${c.avatar_initials}${c.verified&&c.verified!=='none'?`<div class="vb ${c.verified} sm"><i class="ti ti-check"></i></div>`:''}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(c.name)}</div><div style="font-size:11px;color:var(--tx2)">${c.members_count||0} участников</div></div><div class="aac">${acts}</div></div>`;}).join('');
 }
 function swTab(t,el){CT=t;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));el.classList.add('on');renderAdmin();}
 function closeMod(id){document.getElementById(id).classList.remove('on');}
@@ -2052,347 +1718,31 @@ function ago(d){if(!d)return '';const s=(Date.now()-new Date(d))/1000;if(s<60)re
 function toast(m,t){const el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' on';setTimeout(()=>el.classList.remove('on'),2800)}
 
 init();
-
-// EDIT MESSAGE
-let editingMsgId=null;
-let editingIsGroup=false;
-
-function startEditMsg(msgId,currentText,isGroup=false){
-  editingMsgId=msgId;editingIsGroup=isGroup;
-  const inp=document.getElementById('chat-inp');
-  if(!inp)return;
-  inp.value=currentText;
-  inp.focus();
-  inp.setAttribute('data-editing','1');
-  // Change send button appearance
-  const sendBtn=inp.nextElementSibling;
-  if(sendBtn)sendBtn.innerHTML='<i class="ti ti-check" style="font-size:15px"></i>';
-  // Add cancel button
-  const cir=inp.parentElement;
-  let cancelBtn=document.getElementById('edit-cancel-btn');
-  if(!cancelBtn){
-    cancelBtn=document.createElement('button');
-    cancelBtn.id='edit-cancel-btn';
-    cancelBtn.className='bsm';
-    cancelBtn.style.cssText='flex-shrink:0;font-size:11px';
-    cancelBtn.innerHTML='<i class="ti ti-x"></i>';
-    cancelBtn.onclick=cancelEdit;
-    cir.insertBefore(cancelBtn,inp);
-  }
-}
-
-function cancelEdit(){
-  editingMsgId=null;editingIsGroup=false;
-  const inp=document.getElementById('chat-inp');
-  if(inp){inp.value='';inp.removeAttribute('data-editing');}
-  const sendBtn=inp?inp.nextElementSibling:null;
-  if(sendBtn)sendBtn.innerHTML='<i class="ti ti-send" style="font-size:15px"></i>';
-  const cancelBtn=document.getElementById('edit-cancel-btn');
-  if(cancelBtn)cancelBtn.remove();
-}
-
-async function saveEdit(text){
-  if(!editingMsgId)return;
-  if(editingIsGroup){
-    await sb.from('group_messages').update({content:text,edited:true,edited_at:new Date().toISOString()}).eq('id',editingMsgId).eq('sender_id',CU.id);
-  } else {
-    await sb.from('messages').update({content:text,edited:true,edited_at:new Date().toISOString()}).eq('id',editingMsgId).eq('sender_id',CU.id);
-  }
-  // Update in DOM
-  const el=document.querySelector(`[data-id="${editingMsgId}"]`);
-  if(el){
-    const body=el.querySelector('div:first-child');
-    if(body)body.innerHTML=esc(text);
-    const timeEl=el.querySelector('.mt2');
-    if(timeEl&&!timeEl.innerHTML.includes('ред.'))timeEl.innerHTML+='<span style="font-size:9px;opacity:.6"> ред.</span>';
-  }
-  cancelEdit();
-  toast('Сообщение изменено','g');
-}
-
-
-// COMMON FRIENDS
-async function loadUserFriendsCount(uid){
-  const{data:theirFriends}=await sb.from('friends').select('sender_id,receiver_id').or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).eq('status','accepted');
-  const theirIds=new Set((theirFriends||[]).map(f=>f.sender_id===uid?f.receiver_id:f.sender_id));
-  const countEl=document.getElementById('up-friends-count');
-  if(countEl)countEl.textContent=theirIds.size||0;
-  // Find common friends
-  const{data:myFriends}=await sb.from('friends').select('sender_id,receiver_id').or(`sender_id.eq.${CU.id},receiver_id.eq.${CU.id}`).eq('status','accepted');
-  const myIds=new Set((myFriends||[]).map(f=>f.sender_id===CU.id?f.receiver_id:f.sender_id));
-  const common=[...theirIds].filter(id=>myIds.has(id));
-  const commonEl=document.getElementById('up-common-friends');
-  if(commonEl){
-    commonEl.textContent='Общих друзей: '+common.length;
-    commonEl.style.display='block';
-    commonEl.style.cursor=common.length>0?'pointer':'default';
-    commonEl.onclick=common.length>0?()=>showCommonFriends(common):null;
-  }
-}
-
-async function showCommonFriends(ids){
-  const{data:profiles}=await sb.from('profiles').select('id,name,initials,cls,verified,staff_verified').in('id',ids);
-  const ct=document.getElementById('gcm-list');
-  document.getElementById('gcm-title').textContent='Общие друзья';
-  ct.innerHTML=(profiles||[]).map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--br);cursor:pointer" onclick="openUserProfile('${p.id}')">
-    <div class="av sm ${p.cls}" style="position:relative">${p.initials}${vb(p.verified,p.staff_verified,'sm')}</div>
-    <div style="font-size:13px;font-weight:500">${esc(p.name)} ${vi(p.verified,p.staff_verified)}</div>
-  </div>`).join('');
-  document.getElementById('gc-members-modal').classList.add('on');
-}
-
-
-// SWITCH TABS in user profile
-async function switchUserProfileTab(tab){
-  if(!viewingUser)return;
-  if(tab==='posts'){
-    loadUserPosts(viewingUser.id);
-  } else if(tab==='friends'){
-    loadUserFriends(viewingUser.id);
-  }
-}
-
-async function loadUserFriends(uid){
-  const ct=document.getElementById('user-posts-ct');
-  if(!ct)return;
-  ct.innerHTML='<div style="padding:20px;text-align:center"><div class="sp2" style="margin:0 auto"></div></div>';
-  // Check privacy
-  if(viewingUser&&viewingUser.privacy_friends==='none'){
-    ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)"><i class="ti ti-lock" style="font-size:24px;display:block;margin-bottom:8px;opacity:.4"></i>Список друзей скрыт</div>';
-    return;
-  }
-  const{data:fdata}=await sb.from('friends').select('*').or(`sender_id.eq.${uid},receiver_id.eq.${uid}`).eq('status','accepted');
-  if(!fdata||!fdata.length){
-    ct.innerHTML='<div class="card" style="text-align:center;font-size:13px;color:var(--tx2)">Нет друзей</div>';
-    return;
-  }
-  const ids=fdata.map(f=>f.sender_id===uid?f.receiver_id:f.sender_id);
-  const{data:profiles}=await sb.from('profiles').select('id,name,login,initials,cls,verified,staff_verified,last_seen,hide_online,role').in('id',ids);
-  ct.innerHTML=`<div class="card"><div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span>Друзья (${ids.length})</span><button class="bsm" onclick="switchUserProfileTab('posts')" style="font-size:11px"><i class="ti ti-arrow-left"></i>Назад к постам</button></div>`+
-    (profiles||[]).map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--br);cursor:pointer" onclick="openUserProfile('${p.id}')">
-      <div class="av sm ${p.cls}" style="position:relative">${p.initials}${vb(p.verified,p.staff_verified,'sm')}${(isOnline(p.last_seen)&&!(p.hide_online&&p.role&&p.role!=='user'))?'<div class="online-dot sm"></div>':''}</div>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:500">${esc(p.name)} ${vi(p.verified,p.staff_verified)}</div>
-        <div style="font-size:11px;color:${(p.hide_online&&p.role&&p.role!=='user')?'var(--tx2)':isOnline(p.last_seen)?'#1D9E75':'var(--tx2)'}">${(p.hide_online&&p.role&&p.role!=='user')?'Администратор':isOnline(p.last_seen)?'В сети':ago(p.last_seen)}</div>
-      </div>
-      <i class="ti ti-chevron-right" style="color:var(--tx2)"></i>
-    </div>`).join('')+'</div>';
-}
-
-
-// SUPPORT TICKETS
-let currentTicketId=null;
-
-function openSupportTicket(){
-  document.getElementById('ticket-subject').value='';
-  document.getElementById('ticket-message').value='';
-  document.getElementById('support-ticket-modal').classList.add('on');
-}
-
-async function submitSupportTicket(){
-  const subject=document.getElementById('ticket-subject').value.trim();
-  const message=document.getElementById('ticket-message').value.trim();
-  if(!subject||!message){toast('Заполните все поля','r');return;}
-  const{error}=await sb.from('support_tickets').insert({user_id:CU.id,subject,message,status:'open'});
-  if(error){toast('Ошибка отправки','r');return;}
-  closeMod('support-ticket-modal');
-  toast('Обращение отправлено!','g');
-  loadMyTickets();
-}
-
-async function loadMyTickets(){
-  const ct=document.getElementById('my-tickets-list');if(!ct)return;
-  const{data:tickets,error}=await sb.from('support_tickets').select('*').eq('user_id',CU.id).order('created_at',{ascending:false}).limit(10);
-  if(error){console.error('loadMyTickets:',error);return;}
-  if(!tickets||!tickets.length){ct.innerHTML='';return;}
-  ct.innerHTML='<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Мои обращения</div>'+
-    tickets.map(t=>`<div style="border:.5px solid var(--br);border-radius:var(--rm);padding:10px;margin-bottom:8px;cursor:pointer" onclick="viewTicket('${t.id}')">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:13px;font-weight:500">${esc(t.subject)}</div>
-        <span class="ch ${t.status==='open'?'open':t.admin_reply?'blue':'closed'}">${t.status==='open'?'Открыто':t.admin_reply?'Есть ответ':'Закрыто'}</span>
-      </div>
-      <div style="font-size:11px;color:var(--tx2)">${ago(t.created_at)}</div>
-      ${t.admin_reply?`<div style="margin-top:6px;padding:6px 8px;background:var(--acl);border-radius:var(--rm);font-size:12px;color:var(--ac)"><i class="ti ti-message-reply" style="font-size:11px"></i> Есть ответ от поддержки</div>`:''}
-    </div>`).join('');
-}
-
-function viewTicket(id){
-  // Open in modal - show full ticket
-  const ticket=null; // will load
-  sb.from('support_tickets').select('*').eq('id',id).single().then(({data:t})=>{
-    if(!t)return;
-    document.getElementById('trm-title').textContent=t.subject;
-    document.getElementById('trm-body').innerHTML=
-      `<div style="margin-bottom:8px">${esc(t.message)}</div>`+
-      (t.admin_reply?`<div style="margin-top:8px;padding:8px;background:var(--acl);border-radius:var(--rm)"><div style="font-size:10px;color:var(--ac);margin-bottom:4px">Ответ поддержки:</div>${esc(t.admin_reply)}</div>`:'<div style="font-size:12px;color:var(--tx2);margin-top:8px">Ответ ещё не получен</div>');
-    document.getElementById('ticket-reply-text').style.display='none';
-    document.querySelector('#ticket-reply-modal .mac button:last-child').style.display='none';
-    document.getElementById('ticket-reply-modal').classList.add('on');
-  });
-}
-
-// ADMIN: view and reply to tickets
-async function loadAdminTickets(body){
-  const{data:tickets}=await sb.from('support_tickets').select('*,profiles(name,login,initials,cls)').order('created_at',{ascending:false}).limit(50);
-  if(!tickets||!tickets.length){body.innerHTML='<div style="padding:24px;text-align:center;font-size:13px;color:var(--tx2)">Нет обращений</div>';return;}
-  body.innerHTML=tickets.map(t=>{
-    const p=t.profiles;
-    return `<div class="ar${t.status==='open'?' rpt':''}">
-      <div class="av md ${p?p.cls:'av-blue'}">${p?p.initials:'?'}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${esc(t.subject)}</div>
-        <div style="font-size:11px;color:var(--tx2)">@${p?p.login:''} · ${ago(t.created_at)}</div>
-        <div style="font-size:12px;color:var(--tx);margin-top:3px">${esc(t.message.slice(0,100))}${t.message.length>100?'...':''}</div>
-        ${t.admin_reply?`<div style="font-size:11px;color:var(--ac);margin-top:2px">Ответ: ${esc(t.admin_reply.slice(0,60))}</div>`:''}
-      </div>
-      <div class="aac">
-        ${t.status==='open'?`<button class="ba bl2" onclick="openTicketReply('${t.id}','${ea(t.subject)}','${ea(t.message)}')"><i class="ti ti-message-reply"></i>Ответить</button>`:''}
-        <button class="ba gh" onclick="closeTicket('${t.id}')"><i class="ti ti-check"></i>Закрыть</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openTicketReply(id,subject,message){
-  currentTicketId=id;
-  document.getElementById('trm-title').textContent='Ответ: '+subject;
-  document.getElementById('trm-body').textContent=message;
-  document.getElementById('ticket-reply-text').style.display='block';
-  document.getElementById('ticket-reply-text').value='';
-  document.querySelector('#ticket-reply-modal .mac button:last-child').style.display='flex';
-  document.getElementById('ticket-reply-modal').classList.add('on');
-}
-
-async function submitTicketReply(){
-  const reply=document.getElementById('ticket-reply-text').value.trim();
-  if(!reply){toast('Введите ответ','r');return;}
-  await sb.from('support_tickets').update({admin_reply:reply,status:'answered',updated_at:new Date().toISOString()}).eq('id',currentTicketId);
-  closeMod('ticket-reply-modal');toast('Ответ отправлен!','g');
-  renderAdmin();
-}
-
-async function closeTicket(id){
-  await sb.from('support_tickets').update({status:'closed'}).eq('id',id);
-  renderAdmin();toast('Закрыто','g');
-}
-
-
-function handleChatKey(e){
-  if(e.key==='Enter'&&!e.shiftKey){
-    e.preventDefault();
-    e.stopPropagation();
-    sendMsg();
-  }
-}
-
-async function toggleHideOnline(checkbox){
-  if(!checkbox)return;
-  const val=checkbox.checked;
-  const slider=document.getElementById('hide-online-slider');
-  if(slider)slider.style.background=val?'var(--ac)':'var(--br2)';
-  const{error}=await sb.from('profiles').update({hide_online:val}).eq('id',CU.id);
-  if(error){
-    toast('Ошибка сохранения','r');
-    checkbox.checked=!val;
-    return;
-  }
-  CP=await loadP(CU.id);
-  toast(val?'Онлайн скрыт':'Онлайн снова виден','g');
-}
-
-
-// COMMUNITY VERIFY REQUEST
-async function loadCommunityVerifyStatus(){
-  const ct=document.getElementById('community-verify-status');
-  if(!ct||!currentCommunity)return;
-  // Already verified
-  if(currentCommunity.verified&&currentCommunity.verified!=='none'){
-    const color=currentCommunity.verified==='gold'?'#BA7517':'#185FA5';
-    const name=currentCommunity.verified==='gold'?'Золотая (публичное сообщество)':'Синяя (верифицированное)';
-    ct.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg2);border-radius:var(--rm)">
-      <i class="ti ti-rosette-discount-check" style="font-size:20px;color:${color}"></i>
-      <div><div style="font-size:13px;font-weight:500">Верификация активна</div>
-      <div style="font-size:12px;color:var(--tx2)">${name}</div></div>
-    </div>`;
-    return;
-  }
-  // Check existing request
-  const{data:reqs}=await sb.from('community_verify_requests').select('*').eq('community_id',currentCommunity.id).order('created_at',{ascending:false}).limit(1);
-  const req=reqs&&reqs.length?reqs[0]:null;
-  if(req){
-    const stMap={pending:'На рассмотрении',approved:'Одобрена',rejected:'Отклонена'};
-    const stColor={pending:'pending',approved:'open',rejected:'blk'};
-    ct.innerHTML=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);margin-bottom:4px">
-      <div style="font-size:12px;font-weight:600;color:var(--tx2);margin-bottom:6px">ЗАЯВКА НА ВЕРИФИКАЦИЮ</div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span class="ch ${stColor[req.status]||'pending'}">${stMap[req.status]||req.status}</span>
-        <span style="font-size:12px;color:var(--tx2)">${req.reason.slice(0,60)}${req.reason.length>60?'...':''}</span>
-      </div>
-      ${req.status!=='pending'?`<button class="bsm" style="margin-top:8px;font-size:11px" onclick="openCommunityVerifyReq()"><i class="ti ti-plus"></i>Новая заявка</button>`:''}
-      <button class="bsm" style="margin-top:8px;font-size:11px;color:var(--re)" onclick="cancelCommunityVerifyReq('${req.id}')"><i class="ti ti-x"></i>Отозвать</button>
-    </div>`;
-  } else {
-    ct.innerHTML=`<div style="padding:10px;background:var(--bg2);border-radius:var(--rm);margin-bottom:4px">
-      <div style="font-size:12px;color:var(--tx2);margin-bottom:8px">Подайте заявку на верификацию сообщества.</div>
-      <button class="bp" onclick="openCommunityVerifyReq()" style="font-size:12px"><i class="ti ti-rosette-discount-check"></i>Подать заявку</button>
-    </div>`;
-  }
-}
-
-function openCommunityVerifyReq(){
-  document.getElementById('cvr-reason').value='';
-  document.getElementById('community-verify-modal').classList.add('on');
-}
-
-async function submitCommunityVerifyRequest(){
-  if(!currentCommunity)return;
-  const type=document.getElementById('cvr-type').value;
-  const reason=document.getElementById('cvr-reason').value.trim();
-  if(!reason){toast('Укажите причину','r');return;}
-  // Delete old rejected
-  await sb.from('community_verify_requests').delete().eq('community_id',currentCommunity.id).eq('status','rejected');
-  const{error}=await sb.from('community_verify_requests').insert({
-    community_id:currentCommunity.id,
-    user_id:CU.id,
-    reason:type+': '+reason,
-    status:'pending'
-  });
-  if(error){toast('Ошибка: '+error.message,'r');return;}
-  closeMod('community-verify-modal');
-  toast('Заявка отправлена!','g');
-  loadCommunityVerifyStatus();
-}
-
-async function cancelCommunityVerifyReq(id){
-  await sb.from('community_verify_requests').delete().eq('id',id);
-  toast('Заявка отозвана','g');
-  loadCommunityVerifyStatus();
-}
-
-
-async function approveCommunityVerify(reqId, communityId, type){
-  await sb.from('communities').update({verified:type}).eq('id',communityId);
-  await sb.from('community_verify_requests').update({status:'approved'}).eq('id',reqId);
-  renderAdmin();
-  toast('Верификация сообщества выдана!','g');
-}
-
-async function rejectCommunityVerify(reqId){
-  await sb.from('community_verify_requests').update({status:'rejected'}).eq('id',reqId);
-  renderAdmin();
-  toast('Заявка отклонена','r');
-}
-
-
-async function adminDeleteCommunity(id, name){
-  if(!confirm('Удалить сообщество «'+name+'»? Это действие необратимо.'))return;
-  await sb.from('communities').delete().eq('id',id);
-  renderAdmin();
-  toast('Сообщество удалено','r');
-}
-
-
-init();
 </script>
 </body>
-</html>
+</html>async function openChat(partnerId){
+  document.querySelectorAll('.cli').forEach(el=>el.classList.remove('on'));
+  const cli=document.getElementById('cli-'+partnerId);if(cli)cli.classList.add('on');
+  const{data:partner}=await sb.from('profiles').select('*').eq('id',partnerId).single();if(!partner)return;
+  activeChatUser=partner;activeChatType='dm';
+  renderChatWindow(partner.name,partner.cls,partner.initials,partner.verified,partner.staff_verified,false);
+  await loadMessages(partnerId);
+  subscribeDM(partnerId);
+  // Mark as read
+  await sb.from('messages').update({read:true,read_at:new Date().toISOString()}).eq('receiver_id',CU.id).eq('sender_id',partnerId).eq('read',false);
+  loadUnread();
+}
+
+function subscribeDM(partnerId){
+  if(chatSub){chatSub.unsubscribe();chatSub=null;}
+  chatSub=sb.channel('dm-'+CU.id+'-'+partnerId)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},payload=>{
+      const m=payload.new;
+      const isSelf=partnerId===CU.id;
+      if(isSelf&&m.sender_id===CU.id&&m.receiver_id===CU.id)appendMsg(m);
+      else if((m.sender_id===CU.id&&m.receiver_id===partnerId)||(m.sender_id===partnerId&&m.receiver_id===CU.id))appendMsg(m);
+    }).subscribe();
+}
+
+
+
